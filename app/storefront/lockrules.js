@@ -4,6 +4,7 @@
   var lr = window.LockRules;
   if (!lr) return;
   var ATTR = "_lr";
+  var MAIN = lr.main || "main, #MainContent, [role='main']";
 
   function pathOf(href) {
     try {
@@ -187,7 +188,7 @@
 
   function renderDenied() {
     var box = buildBox(false);
-    var main = document.querySelector("main, #MainContent, [role='main']");
+    var main = document.querySelector(MAIN);
     if (main) {
       main.innerHTML = "";
       main.appendChild(box);
@@ -200,11 +201,11 @@
 
   // Commerce mode: price and buy buttons are hidden by CSS; show the prompt where they were.
   function renderCommerce() {
-    var anchor = document.querySelector("product-form, .product-form, form[action$='/cart/add']");
+    var anchor = document.querySelector("product-form, .product-form, form[action$='/cart/add']" + (lr.commerceAnchor ? ", " + lr.commerceAnchor : ""));
     var box = buildBox(true);
     if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(box, anchor);
     else {
-      var main = document.querySelector("main, #MainContent, [role='main']");
+      var main = document.querySelector(MAIN);
       if (main) main.insertBefore(box, main.firstChild);
     }
   }
@@ -272,7 +273,22 @@
     if (!lr.accessGranted(lockId)) location.assign(url || lr.loginUrl || "/");
   };
 
+  // Analytics: one anonymous count per lock per session (app embed setting).
+  function track() {
+    if (!lr.track || !navigator.sendBeacon) return;
+    var ids = (lr.deniedLocks || []).filter(function (id) {
+      if (!id) return false;
+      try {
+        if (sessionStorage.getItem("lockrules-seen:" + id)) return false;
+        sessionStorage.setItem("lockrules-seen:" + id, "1");
+      } catch (e) {}
+      return true;
+    });
+    if (ids.length) navigator.sendBeacon(lr.proxy + "/event", JSON.stringify({ ids: ids }));
+  }
+
   function run() {
+    track();
     if (lr.denied) {
       var pending = checkRemote();
       if (lr.action === "redirect" && lr.redirectUrl && !pending) {

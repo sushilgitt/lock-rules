@@ -72,6 +72,13 @@
               endif
             endfor
           endif
+        when 'b2b'
+          if customer and customer.b2b?
+            assign company_id = customer.current_company.id | append: ''
+            if c.v.size == 0 or c.v contains company_id
+              assign pass = true
+            endif
+          endif
         when 'order_count'
           if customer and c_orders >= c.n
             assign pass = true

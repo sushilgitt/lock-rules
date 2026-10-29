@@ -185,9 +185,7 @@
         "localTime": {
           "date": "2026-10-29",
           "d0": false,
-          "d1": false,
-          "w0": false,
-          "w1": false
+          "w0": false
         }
       },
       "localization": {
@@ -203,6 +201,7 @@
           }
         },
         "buyerIdentity": {
+          "purchasingCompany": null,
           "customer": {
             "email": "a@b.com",
             "numberOfOrders": 0,

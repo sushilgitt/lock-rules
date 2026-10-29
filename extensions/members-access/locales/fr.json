@@ -1,0 +1,7 @@
+{
+  "name": "LockRules accès membres",
+  "heading": "Votre accès membre",
+  "loading": "Chargement…",
+  "empty": "Vous n'avez encore accès à aucun espace réservé aux membres.",
+  "error": "Impossible de charger votre accès pour le moment."
+}

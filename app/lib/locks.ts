@@ -21,6 +21,7 @@ export const NAMED_RESOURCE_TYPES: ResourceType[] = ["vendor", "product_tag"];
 export const PROTECT_MODES = [
   { value: "page", label: "Hide the whole page" },
   { value: "commerce", label: "Hide price and add to cart only" },
+  { value: "sections", label: "Hide specific sections or blocks" },
   { value: "manual", label: "Manual: only LockRules app blocks" },
 ] as const;
 
@@ -144,6 +145,13 @@ export const CONDITION_TYPES = [
     label: "Custom Liquid (secure mode)",
     input: "liquid",
     help: "Liquid that outputs true when the condition passes, e.g. {% if customer.accepts_marketing %}true{% endif %}. Only runs in secure mode; otherwise it never passes.",
+  },
+  {
+    value: "b2b",
+    group: "Customer",
+    label: "Customer is buying for a B2B company",
+    input: "companies",
+    help: "Leave the list empty to allow any company.",
   },
   {
     value: "order_count",
@@ -302,6 +310,8 @@ export interface LockInput {
   seoHidden: boolean;
   // liquid locks: Liquid that outputs "true" on pages the lock covers
   liquidCode: string;
+  // protect = sections: CSS selectors to hide, one per line
+  sectionSelectors: string;
   keys: KeyInput[];
 }
 
@@ -316,6 +326,7 @@ export function emptyLock(): LockInput {
     protect: "page",
     seoHidden: false,
     liquidCode: "",
+    sectionSelectors: "",
     deniedAction: "login",
     deniedMessage: "",
     redirectUrl: "",
@@ -344,6 +355,12 @@ export function validateLock(lock: LockInput): string[] {
   }
   if (!["store", "liquid"].includes(lock.resourceType) && lock.resources.length === 0) {
     errors.push("Pick at least one resource to lock.");
+  }
+  if (lock.protect === "sections" && !lock.sectionSelectors.trim()) {
+    errors.push("List at least one section or block selector to hide.");
+  }
+  if (/[<>{}]/.test(lock.sectionSelectors)) {
+    errors.push("Section selectors can't contain <, >, { or }.");
   }
   if (lock.resourceType === "liquid") {
     errors.push(...liquidProblems(lock.liquidCode, "Lock Liquid"));

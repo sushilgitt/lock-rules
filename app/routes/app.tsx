@@ -23,8 +23,10 @@ export default function App() {
         <s-link href="/app">Home</s-link>
         <s-link href="/app/locks">Locks</s-link>
         <s-link href="/app/lists">Input lists</s-link>
+        <s-link href="/app/analytics">Analytics</s-link>
         <s-link href="/app/usage">Key usage</s-link>
         <s-link href="/app/approvals">Customer approval</s-link>
+        <s-link href="/app/import">Import customers</s-link>
         <s-link href="/app/payments">Payment rules</s-link>
         <s-link href="/app/secure">Secure mode</s-link>
         <s-link href="/app/integrations">Integrations</s-link>

@@ -33,6 +33,9 @@ Without `PARTNER_ID`/`PARTNER_API_TOKEN`, billing is off and every shop gets
 Pro, so development stores stay fully usable.
 
 ### Approvals to request
+0. **Network access for the members-access customer account extension**
+   (Partner Dashboard › the extension › request network access), so the block
+   can call `/customer/access`.
 1. **Protected customer data**: Level 2 (name, email) for customers and
    orders. Needed for "has purchased", customer approval and Klaviyo
    membership keys. After approval, uncomment the `orders/paid` and
@@ -72,6 +75,9 @@ products can't be bought by anyone without access.
 - Customer registration approval, passcode lists, key usage reports
 - Klaviyo and Mailchimp: unlock by subscribing; REST and JavaScript APIs (Pro)
 - Secure mode keeps locked content off the page entirely (Pro)
+- Analytics per lock, bulk customer import with tags, B2B company keys
+- Members-access block in new customer accounts
+- Works with page builders (configurable content and buy-button selectors)
 
 **Privacy policy URL:** `https://<app domain>/privacy`
 

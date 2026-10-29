@@ -1,0 +1,16 @@
+# Customer account block listing the members-only areas a signed-in customer can open.
+api_version = "2026-10"
+
+[[extensions]]
+name = "t:name"
+handle = "members-access"
+type = "ui_extension"
+uid = "2fa647ac-841d-3ee0-91b9-1becc903664419738dcb"
+
+[[extensions.targeting]]
+module = "./src/MembersAccess.jsx"
+target = "customer-account.profile.block.render"
+
+[extensions.capabilities]
+# Calls the LockRules backend (/customer/access) with the session token.
+network_access = true

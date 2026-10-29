@@ -3,11 +3,8 @@ query CartValidationsGenerateRunInput(
   $productTags: [String!] = []
   $collectionIds: [ID!] = []
   $d0: DateTimeWithoutTimezone = "2000-01-01T00:00:00"
-  $d1: DateTimeWithoutTimezone = "2000-01-01T00:00:00"
   $w0s: TimeWithoutTimezone = "00:00:00"
   $w0e: TimeWithoutTimezone = "00:00:01"
-  $w1s: TimeWithoutTimezone = "00:00:00"
-  $w1e: TimeWithoutTimezone = "00:00:01"
 ) {
   validation {
     config: metafield(namespace: "$app", key: "config") {
@@ -19,9 +16,7 @@ query CartValidationsGenerateRunInput(
     localTime {
       date
       d0: dateTimeAfter(dateTime: $d0)
-      d1: dateTimeAfter(dateTime: $d1)
       w0: timeBetween(startTime: $w0s, endTime: $w0e)
-      w1: timeBetween(startTime: $w1s, endTime: $w1e)
     }
   }
   localization {
@@ -39,6 +34,11 @@ query CartValidationsGenerateRunInput(
       }
     }
     buyerIdentity {
+      purchasingCompany {
+        company {
+          id
+        }
+      }
       customer {
         email
         numberOfOrders

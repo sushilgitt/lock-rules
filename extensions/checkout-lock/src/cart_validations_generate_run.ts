@@ -23,6 +23,7 @@ type Config = { locks: Lock[]; message: string; secret?: string };
 
 type Buyer = {
   signedIn: boolean;
+  company: string | null; // B2B company gid
   email: string;
   tags: Set<string>;
   orders: number;
@@ -78,6 +79,9 @@ function conditionPasses(c: Condition, buyer: Buyer): boolean {
       break;
     case "email_contains":
       pass = buyer.signedIn && c.v.some((part) => buyer.email.includes(part));
+      break;
+    case "b2b":
+      pass = Boolean(buyer.company) && (c.v.length === 0 || c.v.includes(buyer.company!));
       break;
     case "order_count":
       pass = buyer.signedIn && buyer.orders >= (c.n ?? 1);
@@ -149,6 +153,7 @@ export function cartValidationsGenerateRun(
 
     const buyer: Buyer = {
       signedIn: Boolean(customer),
+      company: input.cart.buyerIdentity?.purchasingCompany?.company.id ?? null,
       email: (customer?.email ?? "").toLowerCase(),
       tags: new Set(
         (customer?.hasTags ?? []).filter((t) => t.hasTag).map((t) => t.tag.toLowerCase()),
@@ -161,8 +166,8 @@ export function cartValidationsGenerateRun(
       cartVariants: new Set(variants.map((v) => legacy(v.id))),
       subtotal: Number(input.cart.cost.subtotalAmount.amount) / rate,
       weekday: ((new Date(`${time.date}T12:00:00Z`).getUTCDay() + 6) % 7) + 1,
-      dateSlots: [time.d0, time.d1],
-      scheduleSlots: [time.w0, time.w1],
+      dateSlots: [time.d0],
+      scheduleSlots: [time.w0],
     };
 
     const openCache = new Map<string, boolean>();

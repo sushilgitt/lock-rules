@@ -49,9 +49,9 @@ const MAX_CONFIG_BYTES = 120_000;
 
 // Fixed input-query slots the checkout function uses for time conditions
 // (shop.localTime.dateTimeAfter / timeBetween need literal arguments).
-// Functions cap input query cost at 30, which leaves room for two of each.
-export const DATE_SLOTS = 2;
-export const SCHEDULE_SLOTS = 2;
+// Functions cap input query cost at 30, which leaves room for one of each.
+export const DATE_SLOTS = 1;
+export const SCHEDULE_SLOTS = 1;
 // Functions don't receive metafields over 10,000 bytes.
 const MAX_CHECKOUT_BYTES = 9_500;
 
@@ -89,6 +89,8 @@ export interface StorefrontLock {
   url: string;
   ex: string[];
   pm: string;
+  // protect = sections: comma-joined CSS selector list
+  sel: string;
 }
 
 export interface StorefrontConfig {
@@ -144,6 +146,9 @@ function compileKeys(
       }
 
       switch (type) {
+        case "b2b":
+          compiled.v = params.values.map((id) => (target === "checkout" ? id : legacyId(id)));
+          return compiled;
         case "cart_product":
         case "purchased":
         case "cart_variant":
@@ -218,6 +223,14 @@ export function compile(
         url: lock.redirectUrl ?? "",
         ex: (lock.storeExceptions ?? []) as string[],
         pm: lock.protect,
+        sel:
+          lock.protect === "sections"
+            ? (lock.sectionSelectors ?? "")
+                .split(/\r?\n/)
+                .map((s) => s.trim().replace(/[<>{}]/g, ""))
+                .filter(Boolean)
+                .join(", ")
+            : "",
       };
     }),
   };

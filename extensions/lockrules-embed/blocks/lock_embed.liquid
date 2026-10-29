@@ -27,6 +27,14 @@
   assign lr_variants = ''
   assign api = block.settings.js_api
   assign lr_open_ids = ''
+  assign lr_sections = ''
+  assign lr_denied_ids = ''
+  # Page builders (PageFly, GemPages, ...) can render outside <main>; merchants can point us at their wrapper.
+  assign main_sel = block.settings.content_selector | strip | remove: '<' | remove: '>' | remove: '{' | remove: '}'
+  if main_sel == blank
+    assign main_sel = "main, #MainContent, [role='main']"
+  endif
+  assign extra_commerce = block.settings.commerce_selectors | strip | remove: '<' | remove: '>' | remove: '{' | remove: '}'
 
   for lock in cfg.locks
     capture applies
@@ -53,8 +61,19 @@
       continue
     endif
 
+    if applies and lock.type != 'variant'
+      assign lr_denied_ids = lr_denied_ids | append: lock.id | append: ','
+    endif
+
     if applies
-      if lock.type == 'variant'
+      if lock.pm == 'sections'
+        if lock.sel != blank
+          if lr_sections != blank
+            assign lr_sections = lr_sections | append: ', '
+          endif
+          assign lr_sections = lr_sections | append: lock.sel
+        endif
+      elsif lock.type == 'variant'
         for vid in lock.ids
           assign lr_variants = lr_variants | append: vid | append: ','
         endfor
@@ -141,17 +160,22 @@
   </script>
 {%- elsif lr_denied -%}
   <style>
-    main, #MainContent, [role='main'] { visibility: hidden !important; }
+    {{ main_sel }} { visibility: hidden !important; }
     .lockrules-denied { visibility: visible !important; }
   </style>
 {%- elsif lr_commerce -%}
   <style>
     .product__info-container .price, .product .price, .product-single__price, [data-product-price],
     product-form, .product-form, form[action$='/cart/add'] [type='submit'], .shopify-payment-button,
-    .product-form__quantity, quantity-input { display: none !important; }
+    .product-form__quantity, quantity-input{% if extra_commerce != blank %}, {{ extra_commerce }}{% endif %} { display: none !important; }
   </style>
 {%- endif -%}
-{%- if lr_denied or lr_commerce or lr_hide != blank or lr_nav != blank or lr_variants != blank or api -%}
+{%- if lr_sections != blank -%}
+  <style>
+    {{ lr_sections }} { display: none !important; }
+  </style>
+{%- endif -%}
+{%- if lr_denied or lr_commerce or lr_hide != blank or lr_nav != blank or lr_variants != blank or api or lr_denied_ids != blank -%}
   <script>
     window.LockRules = {
       denied: {{ lr_denied | json }},
@@ -167,6 +191,10 @@
       nav: {{ lr_nav | split: ',' | json }},
       variants: {{ lr_variants | split: ',' | json }},
       api: {{ api | json }},
+      main: {{ main_sel | json }},
+      commerceAnchor: {{ extra_commerce | json }},
+      track: {{ block.settings.analytics | json }},
+      deniedLocks: {{ lr_denied_ids | split: ',' | json }},
       open: {{ lr_open_ids | split: ',' | json }},
       t: {
         login: {{ tm.login | default: cfg.msg.login | json }},
@@ -191,6 +219,25 @@
   "name": "LockRules",
   "target": "head",
   "settings": [
+    {
+      "type": "checkbox",
+      "id": "analytics",
+      "label": "Count locked page views",
+      "info": "Sends one anonymous count per lock per browsing session to LockRules for the Analytics page.",
+      "default": true
+    },
+    {
+      "type": "text",
+      "id": "content_selector",
+      "label": "Page content selector",
+      "info": "Only if your theme or page builder (PageFly, GemPages...) doesn't put page content in <main>. Example: .pf-content"
+    },
+    {
+      "type": "text",
+      "id": "commerce_selectors",
+      "label": "Extra price and add-to-cart selectors",
+      "info": "Comma-separated CSS selectors hidden by \"Hide price and add to cart\" locks, for page-builder product layouts."
+    },
     {
       "type": "checkbox",
       "id": "js_api",

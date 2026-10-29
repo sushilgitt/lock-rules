@@ -63,6 +63,8 @@ model Shop {
   locks          Lock[]
   inputLists     InputList[]
   keyUsages      KeyUsage[]
+  lockStats      LockStat[]
+  importJobs     ImportJob[]
   integrations   Integration[]
   apiKeys        ApiKey[]
 }
@@ -81,8 +83,10 @@ model Lock {
   enabled         Boolean  @default(true)
   hideFromLists   Boolean  @default(false)
   hideNavLinks    Boolean  @default(false)
-  // page: hide the whole page | commerce: hide price + add to cart | manual: only app blocks
+  // page: hide the whole page | commerce: hide price + add to cart | sections: hide sectionSelectors | manual: only app blocks
   protect         String   @default("page")
+  // protect = sections: CSS selectors of theme sections/blocks to hide, one per line
+  sectionSelectors String?
   seoHidden       Boolean  @default(false)
   // message | login | redirect
   deniedAction    String   @default("message")
@@ -185,4 +189,37 @@ model ApiKey {
   createdAt  DateTime  @default(now())
 
   @@index([shopId])
+}
+
+// Daily storefront counters per lock (unique denied sessions), from the app proxy.
+model LockStat {
+  id      String   @id @default(cuid())
+  shopId  String
+  shop    Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  lockId  String
+  day     DateTime @db.Date
+  denied  Int      @default(0)
+
+  @@unique([shopId, lockId, day])
+  @@index([shopId, day])
+}
+
+// Bulk customer import (CSV of emails + tags), processed in the background.
+model ImportJob {
+  id        String   @id @default(cuid())
+  shopId    String
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  // queued | running | done | failed
+  status    String   @default("queued")
+  total     Int      @default(0)
+  processed Int      @default(0)
+  created   Int      @default(0)
+  updated   Int      @default(0)
+  // [{ email, tags, firstName?, lastName? }]; cleared when done
+  rows      Json     @default("[]")
+  errors    Json     @default("[]")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([shopId, createdAt])
 }

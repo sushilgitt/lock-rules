@@ -1,0 +1,111 @@
+{
+  "payload": {
+    "export": "cart-validations-generate-run",
+    "target": "cart.validations.generate.run",
+    "input": {
+      "validation": {
+        "config": {
+          "jsonValue": {
+            "message": "{title} isn't available for your account.",
+            "secret": "testsecret",
+            "locks": [
+              {
+                "id": "b2b",
+                "type": "product",
+                "ids": [
+                  "gid://shopify/Product/1"
+                ],
+                "keys": [
+                  {
+                    "c": [
+                      {
+                        "t": "b2b",
+                        "v": [
+                          "gid://shopify/Company/7"
+                        ],
+                        "inv": false
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "presentmentCurrencyRate": "1.0",
+      "shop": {
+        "localTime": {
+          "date": "2026-10-29",
+          "d0": false,
+          "w0": false
+        }
+      },
+      "localization": {
+        "country": {
+          "isoCode": "US"
+        }
+      },
+      "cart": {
+        "tokens": null,
+        "cost": {
+          "subtotalAmount": {
+            "amount": "10.0"
+          }
+        },
+        "buyerIdentity": {
+          "purchasingCompany": {
+            "company": {
+              "id": "gid://shopify/Company/7"
+            }
+          },
+          "customer": {
+            "email": "a@b.com",
+            "numberOfOrders": 0,
+            "purchased": null,
+            "hasTags": [
+              {
+                "tag": "vip",
+                "hasTag": true
+              }
+            ]
+          }
+        },
+        "lines": [
+          {
+            "merchandise": {
+              "__typename": "ProductVariant",
+              "id": "gid://shopify/ProductVariant/100",
+              "product": {
+                "id": "gid://shopify/Product/1",
+                "title": "VIP Hoodie",
+                "vendor": "Store",
+                "productTags": [
+                  {
+                    "tag": "members-only",
+                    "hasTag": false
+                  }
+                ],
+                "inCollections": [
+                  {
+                    "collectionId": "gid://shopify/Collection/9",
+                    "isMember": false
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "output": {
+      "operations": [
+        {
+          "validationAdd": {
+            "errors": []
+          }
+        }
+      ]
+    }
+  }
+}

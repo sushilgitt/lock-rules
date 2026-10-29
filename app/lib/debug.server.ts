@@ -17,6 +17,7 @@ export interface Visitor {
   now: number; // epoch seconds
   weekday: number; // 1 = Monday, store time
   hm: number; // HHMM, store time
+  company?: string | null; // B2B company legacy id
   unlockedRemote: boolean; // pretend passcodes, links, prompts, IP and newsletter keys were unlocked
   customLiquid: boolean; // pretend custom Liquid passes
 }
@@ -112,6 +113,10 @@ function condition(c: StorefrontLock["keys"][number]["c"][number], v: Visitor): 
       [label, why] = [`Email contains: ${list}`, pass ? `Contains “${hit}”` : "No match"];
       break;
     }
+    case "b2b":
+      pass = v.signedIn && Boolean(v.company) && (c.v.length === 0 || c.v.includes(v.company!));
+      [label, why] = ["B2B buyer", v.company ? `Buying for company ${v.company}` : "Not buying for a company"];
+      break;
     case "order_count":
       pass = v.signedIn && v.orders >= (c.n ?? 1);
       [label, why] = [`At least ${c.n} orders`, `Has ${v.orders}`];

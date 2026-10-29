@@ -50,6 +50,7 @@ const CONDITION_GROUPS = [...new Set(CONDITION_TYPES.map((c) => c.group))];
 
 type InputListOption = { id: string; name: string; kind: string; count: number };
 type Audiences = { klaviyo: Audience[]; mailchimp: Audience[] };
+type Company = { id: string; name: string };
 
 type Option = LockResource;
 
@@ -81,6 +82,13 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     storeUrl: (data?.shop?.primaryDomain?.url as string | undefined) ?? `https://${session.shop}`,
     inputLists: (await listInputLists(shop.id)) as InputListOption[],
     audiences: (await allAudiences(shop.id)) as Audiences,
+    companies: await admin
+      .graphql(`#graphql
+        query LockRulesCompanies { companies(first: 100, sortKey: NAME) { nodes { id name } } }`)
+      .then((r) => r.json())
+      .then((j) => (j.data?.companies?.nodes ?? []) as Company[])
+      // Stores without B2B (or without customer data access) have no companies to offer.
+      .catch(() => [] as Company[]),
     content: {
       page: (data?.pages?.nodes ?? []) as Option[],
       blog: (data?.blogs?.nodes ?? []) as Option[],
@@ -123,6 +131,7 @@ function ConditionRow({
   condition,
   inputLists,
   audiences,
+  companies,
   storeUrl,
   onChange,
   onRemove,
@@ -130,6 +139,7 @@ function ConditionRow({
   condition: ConditionInput;
   inputLists: InputListOption[];
   audiences: Audiences;
+  companies: Company[];
   storeUrl: string;
   onChange: (c: ConditionInput) => void;
   onRemove: () => void;
@@ -295,6 +305,34 @@ function ConditionRow({
           </s-stack>
         )}
 
+        {meta?.input === "companies" && (
+          companies.length ? (
+            <s-choice-list
+              label="Companies"
+              multiple
+              values={condition.values}
+              onChange={(e) => {
+                const ids = [...e.currentTarget.values];
+                onChange({
+                  ...condition,
+                  values: ids,
+                  titles: ids.map((id) => companies.find((c) => c.id === id)?.name ?? id),
+                });
+              }}
+            >
+              {companies.map((c) => (
+                <s-choice key={c.id} value={c.id}>
+                  {c.name}
+                </s-choice>
+              ))}
+            </s-choice-list>
+          ) : (
+            <s-paragraph color="subdued">
+              Any B2B company. (No companies found to pick from: B2B needs Shopify Plus.)
+            </s-paragraph>
+          )
+        )}
+
         {condition.type === "newsletter" && (
           <s-grid gridTemplateColumns="1fr 2fr" gap="base">
             <s-select
@@ -441,7 +479,7 @@ function ConditionRow({
 }
 
 export default function LockEditor() {
-  const { isNew, lockId, lock: initial, content, inputLists, audiences, storeUrl } =
+  const { isNew, lockId, lock: initial, content, inputLists, audiences, companies, storeUrl } =
     useLoaderData<typeof loader>();
   const [lock, setLock] = useState<LockInput>(initial);
   const fetcher = useFetcher<typeof action>();
@@ -691,6 +729,7 @@ export default function LockEditor() {
                     condition={c}
                     inputLists={inputLists}
                     audiences={audiences}
+                    companies={companies}
                     storeUrl={storeUrl}
                     onChange={(next) =>
                       updateKey(
@@ -787,6 +826,16 @@ export default function LockEditor() {
                 </s-option>
               ))}
             </s-select>
+            {lock.protect === "sections" && (
+              <s-text-area
+                label="Sections and blocks to hide"
+                rows={4}
+                value={lock.sectionSelectors}
+                placeholder={"#shopify-section-template--123__featured_collection\n.product__description"}
+                details="One CSS selector per line. In the theme editor, right-click a section › Inspect to find its id (it starts with shopify-section-)."
+                onInput={(e) => set("sectionSelectors", e.currentTarget.value)}
+              />
+            )}
             {lock.protect === "manual" && (
               <s-stack gap="small-200">
                 <s-paragraph color="subdued">
