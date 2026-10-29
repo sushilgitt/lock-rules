@@ -101,6 +101,8 @@ function conditionPasses(c: Condition, buyer: Buyer): boolean {
     case "secret_link":
     case "confirm":
     case "ip":
+    case "newsletter":
+    case "klaviyo_member":
       pass = Boolean(c.id && buyer.unlocked.has(c.id));
       break;
     case "date_after":

@@ -196,6 +196,44 @@ function itemSnippet(ns: string) {
 `;
 }
 
+/** For theme developers: outputs "1" when the visitor holds a key to `lock_id`. */
+function accessSnippet(ns: string) {
+  // Nothing renders it until a developer does, so theme check reports it as orphaned.
+  return `${HEADER}{%- doc -%}
+  Outputs "1" when the visitor holds a key to the lock with this ID, or when the
+  lock is turned off or deleted. Copy lock IDs from the LockRules app.
+
+  @param {string} lock_id - The lock ID
+
+  @example
+  {%- capture access -%}{%- render 'lockrules-access', lock_id: 'clx123' -%}{%- endcapture -%}
+  {%- if access == '1' -%}Members-only content{%- endif -%}
+{%- enddoc -%}
+{%- liquid
+  assign cfg = shop.metafields['${ns}'].config.value
+  assign found = false
+  for lock in cfg.locks
+    if lock.id == lock_id
+      assign found = true
+      capture unlocked
+        render 'lockrules-unlocked'
+      endcapture
+      capture open
+        render 'lockrules-open', lock: lock, unlocked: unlocked
+      endcapture
+      if open != blank
+        echo '1'
+      endif
+      break
+    endif
+  endfor
+  unless found
+    echo '1'
+  endunless
+-%}
+`;
+}
+
 export type CustomRule = { kind: "lock" | "cond"; id: string; liquid: string };
 
 /** Merchant-written Liquid for Liquid locks and custom Liquid conditions. */
@@ -232,6 +270,7 @@ export function snippetFiles(appId: string, rules: CustomRule[]) {
   return {
     [`snippets/${GATE}.liquid`]: gateSnippet(ns),
     "snippets/lockrules-item.liquid": itemSnippet(ns),
+    "snippets/lockrules-access.liquid": accessSnippet(ns),
     "snippets/lockrules-open.liquid": forTheme(lrOpen, ns),
     "snippets/lockrules-unlocked.liquid": forTheme(lrUnlocked, ns),
     "snippets/lockrules-applies.liquid": forTheme(lrApplies, ns),

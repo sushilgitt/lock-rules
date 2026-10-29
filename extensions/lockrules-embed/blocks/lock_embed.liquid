@@ -25,6 +25,8 @@
   assign lr_hide = ''
   assign lr_nav = ''
   assign lr_variants = ''
+  assign api = block.settings.js_api
+  assign lr_open_ids = ''
 
   for lock in cfg.locks
     capture applies
@@ -37,7 +39,7 @@
       assign applies = false
     endif
 
-    unless applies or lock.hide or lock.nav
+    unless applies or lock.hide or lock.nav or api
       continue
     endunless
 
@@ -45,6 +47,9 @@
       render 'lr_open', lock: lock, unlocked: unlocked, product: product, collection: collection, page: page, blog: blog, article: article
     endcapture
     if open != blank
+      if api
+        assign lr_open_ids = lr_open_ids | append: lock.id | append: ','
+      endif
       continue
     endif
 
@@ -102,7 +107,8 @@
         if c.inv
           continue
         endif
-        if c.t == 'passcode' or c.t == 'confirm' or c.t == 'ip'
+        assign actionable = 'passcode,confirm,ip,newsletter,klaviyo_member' | split: ','
+        if actionable contains c.t
           assign needle = '|' | append: c.id | append: '|'
           if unlocked contains needle
             continue
@@ -145,7 +151,7 @@
     .product-form__quantity, quantity-input { display: none !important; }
   </style>
 {%- endif -%}
-{%- if lr_denied or lr_commerce or lr_hide != blank or lr_nav != blank or lr_variants != blank -%}
+{%- if lr_denied or lr_commerce or lr_hide != blank or lr_nav != blank or lr_variants != blank or api -%}
   <script>
     window.LockRules = {
       denied: {{ lr_denied | json }},
@@ -160,6 +166,8 @@
       hide: {{ lr_hide | split: ',' | json }},
       nav: {{ lr_nav | split: ',' | json }},
       variants: {{ lr_variants | split: ',' | json }},
+      api: {{ api | json }},
+      open: {{ lr_open_ids | split: ',' | json }},
       t: {
         login: {{ tm.login | default: cfg.msg.login | json }},
         loginButton: {{ tm.loginButton | default: cfg.msg.loginButton | json }},
@@ -168,7 +176,10 @@
         passcodeButton: {{ tm.passcodeButton | default: cfg.msg.passcodeButton | json }},
         passcodeError: {{ tm.passcodeError | default: cfg.msg.passcodeError | json }},
         confirm: {{ tm.confirm | default: cfg.msg.confirm | json }},
-        confirmButton: {{ tm.confirmButton | default: cfg.msg.confirmButton | json }}
+        confirmButton: {{ tm.confirmButton | default: cfg.msg.confirmButton | json }},
+        newsletter: {{ tm.newsletter | default: cfg.msg.newsletter | json }},
+        newsletterButton: {{ tm.newsletterButton | default: cfg.msg.newsletterButton | json }},
+        newsletterError: {{ tm.newsletterError | default: cfg.msg.newsletterError | json }}
       }
     };
   </script>
@@ -179,6 +190,14 @@
 {
   "name": "LockRules",
   "target": "head",
-  "settings": []
+  "settings": [
+    {
+      "type": "checkbox",
+      "id": "js_api",
+      "label": "Enable JavaScript API",
+      "info": "Adds window.LockRules.accessGranted(lockId) for custom theme code. Checks every lock on every page.",
+      "default": false
+    }
+  ]
 }
 {% endschema %}

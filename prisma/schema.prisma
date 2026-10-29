@@ -59,6 +59,8 @@ model Shop {
   locks          Lock[]
   inputLists     InputList[]
   keyUsages      KeyUsage[]
+  integrations   Integration[]
+  apiKeys        ApiKey[]
 }
 
 model Lock {
@@ -148,4 +150,35 @@ model KeyUsage {
 
   @@index([shopId, createdAt])
   @@index([shopId, customerId])
+}
+
+// Marketing integrations. credentials is AES-GCM encrypted JSON (app/lib/crypto.server.ts).
+model Integration {
+  id          String   @id @default(cuid())
+  shopId      String
+  shop        Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  // klaviyo | mailchimp
+  provider    String
+  credentials String
+  // { doubleOptIn?: boolean }
+  settings    Json     @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([shopId, provider])
+}
+
+// Keys for the public REST API (/api/v1). Only a SHA-256 hash is stored.
+model ApiKey {
+  id         String    @id @default(cuid())
+  shopId     String
+  shop       Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name       String
+  // First characters, shown in the admin to tell keys apart
+  prefix     String
+  hash       String    @unique
+  lastUsedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([shopId])
 }

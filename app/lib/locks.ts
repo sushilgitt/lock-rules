@@ -123,6 +123,22 @@ export const CONDITION_TYPES = [
     help: "Opens the lock for everyone. Combine with other conditions or use for exclusions.",
   },
   {
+    value: "newsletter",
+    group: "Marketing",
+    label: "Visitor subscribes to a newsletter",
+    input: "audience",
+    remote: true,
+    help: "Visitors enter their email to unlock and are added to your Klaviyo list or Mailchimp audience. Connect one under Integrations.",
+  },
+  {
+    value: "klaviyo_member",
+    group: "Marketing",
+    label: "Customer is on a Klaviyo list or segment",
+    input: "audience",
+    remote: true,
+    help: "Checked against the signed-in customer's email. Needs customer data access for LockRules.",
+  },
+  {
     value: "liquid",
     group: "Special",
     label: "Custom Liquid (secure mode)",
@@ -243,6 +259,10 @@ export interface ConditionInput {
   to?: string;
   // liquid: merchant-written Liquid that outputs "true"
   liquid?: string;
+  // newsletter / klaviyo_member: where to subscribe or look the customer up
+  provider?: "klaviyo" | "mailchimp";
+  audience?: string;
+  audienceKind?: "list" | "segment";
 }
 
 export function newUid() {
@@ -352,6 +372,8 @@ export function validateLock(lock: LockInput): string[] {
         errors.push(`Key ${k + 1}, condition ${i + 1}: enter a number.`);
       } else if (conditionMeta(c.type)?.input === "datetime" && !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(c.at ?? "")) {
         errors.push(`Key ${k + 1}, condition ${i + 1}: enter a date and time.`);
+      } else if ((c.type === "newsletter" || c.type === "klaviyo_member") && !c.audience) {
+        errors.push(`Key ${k + 1}, condition ${i + 1}: choose a list.`);
       } else if (c.type === "liquid" && liquidProblems(c.liquid ?? "", "x").length) {
         errors.push(`Key ${k + 1}, condition ${i + 1}: ${liquidProblems(c.liquid ?? "", "Custom Liquid")[0]}`);
       } else if (

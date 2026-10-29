@@ -19,6 +19,7 @@ import {
 } from "../models/lock.server";
 import { syncShop } from "../lib/compile.server";
 import { listInputLists } from "../models/inputList.server";
+import { allAudiences, type Audience } from "../lib/integrations.server";
 import {
   CONDITION_TYPES,
   DENIED_ACTIONS,
@@ -45,6 +46,7 @@ import {
 const CONDITION_GROUPS = [...new Set(CONDITION_TYPES.map((c) => c.group))];
 
 type InputListOption = { id: string; name: string; kind: string; count: number };
+type Audiences = { klaviyo: Audience[]; mailchimp: Audience[] };
 
 type Option = LockResource;
 
@@ -75,6 +77,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     lock,
     storeUrl: (data?.shop?.primaryDomain?.url as string | undefined) ?? `https://${session.shop}`,
     inputLists: (await listInputLists(shop.id)) as InputListOption[],
+    audiences: (await allAudiences(shop.id)) as Audiences,
     content: {
       page: (data?.pages?.nodes ?? []) as Option[],
       blog: (data?.blogs?.nodes ?? []) as Option[],
@@ -110,12 +113,14 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 function ConditionRow({
   condition,
   inputLists,
+  audiences,
   storeUrl,
   onChange,
   onRemove,
 }: {
   condition: ConditionInput;
   inputLists: InputListOption[];
+  audiences: Audiences;
   storeUrl: string;
   onChange: (c: ConditionInput) => void;
   onRemove: () => void;
@@ -281,6 +286,72 @@ function ConditionRow({
           </s-stack>
         )}
 
+        {condition.type === "newsletter" && (
+          <s-grid gridTemplateColumns="1fr 2fr" gap="base">
+            <s-select
+              label="Platform"
+              value={condition.provider ?? ""}
+              onChange={(e) =>
+                onChange({
+                  ...condition,
+                  provider: (e.currentTarget.value || undefined) as ConditionInput["provider"],
+                  audience: undefined,
+                })
+              }
+            >
+              <s-option value="">Choose…</s-option>
+              <s-option value="klaviyo">Klaviyo</s-option>
+              <s-option value="mailchimp">Mailchimp</s-option>
+            </s-select>
+            <s-select
+              label="Subscribe to"
+              value={condition.audience ?? ""}
+              disabled={!condition.provider}
+              onChange={(e) =>
+                onChange({ ...condition, audience: e.currentTarget.value || undefined, audienceKind: "list" })
+              }
+            >
+              <s-option value="">
+                {condition.provider && !audiences[condition.provider].length
+                  ? "Connect it under Integrations"
+                  : "Choose a list…"}
+              </s-option>
+              {(condition.provider ? audiences[condition.provider] : [])
+                .filter((a) => a.kind === "list")
+                .map((a) => (
+                  <s-option key={a.id} value={a.id}>
+                    {a.name}
+                  </s-option>
+                ))}
+            </s-select>
+          </s-grid>
+        )}
+
+        {condition.type === "klaviyo_member" && (
+          <s-select
+            label="Klaviyo list or segment"
+            value={condition.audience ? `${condition.audienceKind ?? "list"}:${condition.audience}` : ""}
+            onChange={(e) => {
+              const [kind, ...rest] = e.currentTarget.value.split(":");
+              onChange({
+                ...condition,
+                provider: "klaviyo",
+                audience: rest.join(":") || undefined,
+                audienceKind: kind === "segment" ? "segment" : "list",
+              });
+            }}
+          >
+            <s-option value="">
+              {audiences.klaviyo.length ? "Choose…" : "Connect Klaviyo under Integrations"}
+            </s-option>
+            {audiences.klaviyo.map((a) => (
+              <s-option key={`${a.kind}:${a.id}`} value={`${a.kind}:${a.id}`}>
+                {a.kind === "segment" ? "Segment" : "List"}: {a.name}
+              </s-option>
+            ))}
+          </s-select>
+        )}
+
         {meta?.input === "liquid" && (
           <s-text-area
             label="Liquid"
@@ -307,7 +378,7 @@ function ConditionRow({
           </s-select>
         )}
 
-        {condition.type === "confirm" && (
+        {(condition.type === "confirm" || condition.type === "newsletter") && (
           <s-text-area
             label="Prompt"
             rows={2}
@@ -361,7 +432,7 @@ function ConditionRow({
 }
 
 export default function LockEditor() {
-  const { isNew, lockId, lock: initial, content, inputLists, storeUrl } =
+  const { isNew, lockId, lock: initial, content, inputLists, audiences, storeUrl } =
     useLoaderData<typeof loader>();
   const [lock, setLock] = useState<LockInput>(initial);
   const fetcher = useFetcher<typeof action>();
@@ -605,6 +676,7 @@ export default function LockEditor() {
                     key={`${c.uid}-${c.type}`}
                     condition={c}
                     inputLists={inputLists}
+                    audiences={audiences}
                     storeUrl={storeUrl}
                     onChange={(next) =>
                       updateKey(

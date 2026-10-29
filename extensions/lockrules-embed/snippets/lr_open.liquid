@@ -133,7 +133,7 @@
           if c.v contains v_market
             assign pass = true
           endif
-        when 'passcode', 'secret_link', 'confirm', 'ip'
+        when 'passcode', 'secret_link', 'confirm', 'ip', 'newsletter', 'klaviyo_member'
           assign needle = '|' | append: c.id | append: '|'
           if unlocked contains needle
             assign pass = true

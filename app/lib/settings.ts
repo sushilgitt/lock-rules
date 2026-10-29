@@ -7,6 +7,9 @@ export interface Messages {
   passcodeError: string;
   confirm: string;
   confirmButton: string;
+  newsletter: string;
+  newsletterButton: string;
+  newsletterError: string;
   checkout: string;
 }
 
@@ -42,6 +45,9 @@ export const MESSAGE_FIELDS: { key: keyof Messages; label: string; multiline?: b
   { key: "passcodeError", label: "Wrong passcode message" },
   { key: "confirm", label: "Confirmation prompt (default)", multiline: true },
   { key: "confirmButton", label: "Confirmation button" },
+  { key: "newsletter", label: "Newsletter prompt", multiline: true },
+  { key: "newsletterButton", label: "Newsletter button" },
+  { key: "newsletterError", label: "Newsletter error" },
   { key: "checkout", label: "Checkout error ({title} = product name)" },
 ];
 
@@ -55,6 +61,9 @@ export const DEFAULT_SETTINGS: ShopSettings = {
     passcodeError: "That passcode isn't right. Try again.",
     confirm: "Please confirm to continue.",
     confirmButton: "I confirm",
+    newsletter: "Join our newsletter to get access.",
+    newsletterButton: "Subscribe and unlock",
+    newsletterError: "We couldn't sign you up. Check your email and try again.",
     checkout: "{title} isn't available for your account.",
   },
   translations: {},

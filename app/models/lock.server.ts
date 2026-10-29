@@ -29,6 +29,9 @@ export function readParams(raw: unknown): ConditionParams {
     ...(p.from ? { from: String(p.from) } : {}),
     ...(p.to ? { to: String(p.to) } : {}),
     ...(p.liquid ? { liquid: String(p.liquid) } : {}),
+    ...(p.provider === "klaviyo" || p.provider === "mailchimp" ? { provider: p.provider } : {}),
+    ...(p.audience ? { audience: String(p.audience) } : {}),
+    ...(p.audienceKind === "segment" || p.audienceKind === "list" ? { audienceKind: p.audienceKind } : {}),
   };
 }
 
@@ -86,6 +89,9 @@ function keysCreate(input: LockInput) {
             from: c.from,
             to: c.to,
             liquid: c.type === "liquid" ? c.liquid : undefined,
+            provider: c.type === "klaviyo_member" ? "klaviyo" : c.provider,
+            audience: c.audience,
+            audienceKind: c.audienceKind,
           });
           return {
             position: i,

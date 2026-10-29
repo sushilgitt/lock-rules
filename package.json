@@ -6,7 +6,7 @@
     "dev": "shopify app dev",
     "config:link": "shopify app config link",
     "generate": "shopify app generate",
-    "deploy": "shopify app deploy",
+    "deploy": "npm run build:embed && shopify app deploy",
     "config:use": "shopify app config use",
     "env": "shopify app env",
     "start": "react-router-serve ./build/server/index.js",
@@ -17,7 +17,8 @@
     "prisma": "prisma",
     "graphql-codegen": "graphql-codegen",
     "vite": "vite",
-    "typecheck": "react-router typegen && tsc --noEmit"
+    "typecheck": "react-router typegen && tsc --noEmit",
+    "build:embed": "esbuild app/storefront/lockrules.js --minify --target=es2017 --outfile=extensions/lockrules-embed/assets/lockrules.js --banner:js=\"/* LockRules storefront script. Source: app/storefront/lockrules.js (npm run build:embed) */\""
   },
   "type": "module",
   "engines": {
@@ -49,6 +50,7 @@
     "@types/react-dom": "^19.3.0",
     "@typescript-eslint/eslint-plugin": "^6.21.0",
     "@typescript-eslint/parser": "^6.21.0",
+    "esbuild": "^0.25.12",
     "eslint": "^8.57.1",
     "eslint-import-resolver-typescript": "^3.10.1",
     "eslint-plugin-import": "^2.32.0",

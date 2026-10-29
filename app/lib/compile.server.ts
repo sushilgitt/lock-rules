@@ -136,7 +136,9 @@ function compileKeys(
 
       if (REMOTE_CONDITIONS.includes(type)) {
         compiled.id = params.uid;
-        if (type === "confirm" && params.prompt && target === "storefront") compiled.p = params.prompt;
+        if ((type === "confirm" || type === "newsletter") && params.prompt && target === "storefront") {
+          compiled.p = params.prompt;
+        }
         return compiled;
       }
 

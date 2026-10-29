@@ -1,0 +1,303 @@
+// LockRules storefront helper. Config comes from blocks/lock_embed.liquid.
+// Edit here, then `npm run build:embed` writes the minified extensions/lockrules-embed/assets/lockrules.js.
+(function () {
+  var lr = window.LockRules;
+  if (!lr) return;
+  var ATTR = "_lr";
+
+  function pathOf(href) {
+    try {
+      // Strip locale prefixes like /fr or /en-ca so /fr/products/x matches /products/x.
+      return new URL(href, location.origin).pathname.replace(/^\/[a-z]{2}(-[a-z]{2})?(?=\/)/i, "").replace(/\/$/, "");
+    } catch (e) {
+      return "";
+    }
+  }
+
+  function matches(list, href) {
+    var p = pathOf(href);
+    for (var i = 0; i < list.length; i++) if (list[i] && p === list[i]) return true;
+    return false;
+  }
+
+  function hideLinks(root) {
+    var links = root.querySelectorAll ? root.querySelectorAll("a[href]") : [];
+    for (var i = 0; i < links.length; i++) {
+      var a = links[i];
+      var href = a.getAttribute("href");
+      var inNav = a.closest("header, nav, [role='navigation'], .header, .menu-drawer");
+      if (inNav && matches(lr.nav, href)) {
+        (a.closest("li") || a).style.display = "none";
+      } else if (!inNav && matches(lr.hide, href)) {
+        var card = a.closest("li, .grid__item, .card-wrapper, .product-card, .product-item, .predictive-search__list-item") || a;
+        card.style.display = "none";
+      }
+    }
+  }
+
+  // --- unlock tokens -------------------------------------------------------
+
+  function saveTokens(tokens) {
+    var now = Date.now() / 1000;
+    var uids = tokens.map(function (t) { return t.split(".")[0]; });
+    return fetch("/cart.js", { credentials: "same-origin" })
+      .then(function (r) { return r.json(); })
+      .then(function (cart) {
+        var kept = ((cart.attributes || {})[ATTR] || "").split(" ").filter(function (t) {
+          var p = t.split(".");
+          return p.length === 3 && uids.indexOf(p[0]) === -1 && Number(p[1]) > now;
+        });
+        var attributes = {};
+        attributes[ATTR] = kept.concat(tokens).slice(-20).join(" ");
+        return fetch("/cart/update.js", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ attributes: attributes })
+        });
+      });
+  }
+
+  function proxy(path, body) {
+    return fetch(lr.proxy + path, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(body)
+    }).then(function (r) { return r.json(); });
+  }
+
+  function unlocked(redirect) {
+    return function () {
+      if (redirect) location.assign(redirect);
+      else location.reload();
+    };
+  }
+
+  // --- denied view -----------------------------------------------------------
+
+  function el(tag, attrs, text) {
+    var node = document.createElement(tag);
+    for (var k in attrs) node.setAttribute(k, attrs[k]);
+    if (text) node.textContent = text;
+    return node;
+  }
+
+  function passcodeForm(cond) {
+    var form = el("form", { "class": "lockrules-form", style: "display:flex;gap:.5rem;justify-content:center;flex-wrap:wrap;margin:1rem 0" });
+    var input = el("input", { type: "password", autocomplete: "off", required: "", "aria-label": lr.t.passcode, "class": "field__input", style: "max-width:16rem;padding:.6rem" });
+    var button = el("button", { type: "submit", "class": "button button--primary btn" }, lr.t.passcodeButton);
+    var error = el("p", { role: "alert", style: "width:100%;margin:.5rem 0 0;color:#b00020" });
+    form.appendChild(input);
+    form.appendChild(button);
+    form.appendChild(error);
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      button.disabled = true;
+      error.textContent = "";
+      proxy("/unlock", { uid: cond.id, value: input.value })
+        .then(function (res) {
+          if (!res.ok) throw new Error(res.error);
+          return saveTokens([res.token]).then(unlocked(res.redirect));
+        })
+        .catch(function () {
+          error.textContent = lr.t.passcodeError;
+          button.disabled = false;
+          input.select();
+        });
+    });
+    return form;
+  }
+
+  function confirmButton(cond) {
+    var wrap = el("div", { style: "margin:1rem 0" });
+    if (cond.p) wrap.appendChild(el("p", { style: "white-space:pre-line" }, cond.p));
+    var button = el("button", { type: "button", "class": "button button--primary btn" }, lr.t.confirmButton);
+    button.addEventListener("click", function () {
+      button.disabled = true;
+      proxy("/unlock", { uid: cond.id })
+        .then(function (res) {
+          if (!res.ok) throw new Error(res.error);
+          return saveTokens([res.token]).then(unlocked(res.redirect));
+        })
+        .catch(function () { button.disabled = false; });
+    });
+    wrap.appendChild(button);
+    return wrap;
+  }
+
+  function newsletterForm(cond) {
+    var form = el("form", { "class": "lockrules-form", style: "display:flex;gap:.5rem;justify-content:center;flex-wrap:wrap;margin:1rem 0" });
+    if (cond.p) form.appendChild(el("p", { style: "width:100%;white-space:pre-line;margin:0" }, cond.p));
+    var input = el("input", { type: "email", autocomplete: "email", required: "", "aria-label": "Email", placeholder: "you@example.com", "class": "field__input", style: "max-width:18rem;padding:.6rem" });
+    var button = el("button", { type: "submit", "class": "button button--primary btn" }, lr.t.newsletterButton);
+    var error = el("p", { role: "alert", style: "width:100%;margin:.5rem 0 0;color:#b00020" });
+    form.appendChild(input);
+    form.appendChild(button);
+    form.appendChild(error);
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      button.disabled = true;
+      error.textContent = "";
+      proxy("/subscribe", { uid: cond.id, email: input.value })
+        .then(function (res) {
+          if (!res.ok) throw new Error(res.error);
+          return saveTokens([res.token]).then(unlocked());
+        })
+        .catch(function () {
+          error.textContent = lr.t.newsletterError;
+          button.disabled = false;
+        });
+    });
+    return form;
+  }
+
+  function buildBox(compact) {
+    var remote = lr.remote || [];
+    var has = function (t) { return remote.some(function (c) { return c.t === t; }); };
+    var guestLogin = lr.action === "login" && !lr.signedIn;
+
+    var message = lr.message;
+    if (!message) {
+      if (has("passcode")) message = lr.t.passcode;
+      else if (has("newsletter") && !remote.some(function (c) { return c.t === "newsletter" && c.p; })) message = lr.t.newsletter;
+      else if (guestLogin) message = lr.t.login;
+      else if (has("confirm") && !remote.some(function (c) { return c.t === "confirm" && c.p; })) message = lr.t.confirm;
+      else if (!has("confirm")) message = lr.t.denied;
+    }
+
+    var box = el("div", {
+      "class": "lockrules-denied",
+      role: "region",
+      "aria-live": "polite",
+      style: compact ? "margin:1rem 0;text-align:left" : "max-width:36rem;margin:4rem auto;padding:2rem 1rem;text-align:center"
+    });
+    if (message) box.appendChild(el("p", { style: "white-space:pre-line;margin:0 0 1rem" }, message));
+    remote.forEach(function (c) {
+      if (c.t === "passcode") box.appendChild(passcodeForm(c));
+      if (c.t === "confirm") box.appendChild(confirmButton(c));
+      if (c.t === "newsletter") box.appendChild(newsletterForm(c));
+    });
+    if (guestLogin) {
+      var login = el("a", { href: lr.loginUrl, "class": "button btn" + (has("passcode") ? "" : " button--primary") }, lr.t.loginButton);
+      box.appendChild(login);
+    }
+    return box;
+  }
+
+  function renderDenied() {
+    var box = buildBox(false);
+    var main = document.querySelector("main, #MainContent, [role='main']");
+    if (main) {
+      main.innerHTML = "";
+      main.appendChild(box);
+      main.style.setProperty("visibility", "visible", "important");
+    } else {
+      document.body.innerHTML = "";
+      document.body.appendChild(box);
+    }
+  }
+
+  // Commerce mode: price and buy buttons are hidden by CSS; show the prompt where they were.
+  function renderCommerce() {
+    var anchor = document.querySelector("product-form, .product-form, form[action$='/cart/add']");
+    var box = buildBox(true);
+    if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(box, anchor);
+    else {
+      var main = document.querySelector("main, #MainContent, [role='main']");
+      if (main) main.insertBefore(box, main.firstChild);
+    }
+  }
+
+  // Variant locks: drop locked variants from pickers and refuse to add them to the cart.
+  function guardVariants() {
+    var locked = (lr.variants || []).filter(Boolean);
+    if (!locked.length) return;
+    var isLocked = function (id) { return locked.indexOf(String(id)) !== -1; };
+
+    document.querySelectorAll("select[name='id'] option").forEach(function (o) {
+      if (isLocked(o.value)) o.remove();
+    });
+
+    function sync() {
+      document.querySelectorAll("form[action$='/cart/add']").forEach(function (form) {
+        var input = form.querySelector("[name='id']");
+        var blocked = input && isLocked(input.value);
+        form.querySelectorAll("[type='submit']").forEach(function (b) {
+          b.disabled = Boolean(blocked);
+          if (blocked) b.setAttribute("aria-disabled", "true");
+          else b.removeAttribute("aria-disabled");
+        });
+      });
+    }
+    document.addEventListener("change", function () { setTimeout(sync, 50); }, true);
+    document.addEventListener("submit", function (e) {
+      var input = e.target.querySelector && e.target.querySelector("[name='id']");
+      if (input && isLocked(input.value)) e.preventDefault();
+    }, true);
+    sync();
+  }
+
+  // Server-checked keys that need no input (IP, Klaviyo membership): ask once per
+  // session; reload if anything unlocks.
+  function autoCheck(type, path) {
+    if (type === "klaviyo_member" && !lr.signedIn) return false;
+    var ids = (lr.remote || []).filter(function (c) { return c.t === type; }).map(function (c) { return c.id; });
+    if (!ids.length) return false;
+    var flag = "lockrules-" + type + ":" + ids.join(",");
+    try {
+      if (sessionStorage.getItem(flag)) return false;
+      sessionStorage.setItem(flag, "1");
+    } catch (e) {}
+    proxy(path, { uids: ids })
+      .then(function (res) {
+        if (res.ok && res.tokens && res.tokens.length) return saveTokens(res.tokens).then(unlocked());
+        if (lr.action === "redirect" && lr.redirectUrl) location.replace(lr.redirectUrl);
+      })
+      .catch(function () {});
+    return true;
+  }
+
+  function checkRemote() {
+    var ip = autoCheck("ip", "/ip");
+    var member = autoCheck("klaviyo_member", "/member");
+    return ip || member;
+  }
+
+  // Public API for theme developers (app embed setting "Enable JavaScript API").
+  lr.accessGranted = function (lockId) {
+    return (lr.open || []).indexOf(String(lockId)) !== -1;
+  };
+  lr.requireAccess = function (lockId, url) {
+    if (!lr.accessGranted(lockId)) location.assign(url || lr.loginUrl || "/");
+  };
+
+  function run() {
+    if (lr.denied) {
+      var pending = checkRemote();
+      if (lr.action === "redirect" && lr.redirectUrl && !pending) {
+        var others = (lr.remote || []).filter(function (c) { return c.t !== "ip" && c.t !== "klaviyo_member"; });
+        if (!others.length) return location.replace(lr.redirectUrl);
+      }
+      renderDenied();
+    } else if (lr.commerce) {
+      checkRemote();
+      renderCommerce();
+    }
+    guardVariants();
+    if ((lr.hide && lr.hide.length) || (lr.nav && lr.nav.length)) {
+      hideLinks(document);
+      // Catch cards added later: predictive search, infinite scroll, quick view.
+      new MutationObserver(function (records) {
+        for (var i = 0; i < records.length; i++) {
+          var added = records[i].addedNodes;
+          for (var j = 0; j < added.length; j++) if (added[j].nodeType === 1) hideLinks(added[j]);
+        }
+      }).observe(document.body, { childList: true, subtree: true });
+    }
+    document.dispatchEvent(new CustomEvent("lockrules:ready", { detail: lr }));
+  }
+
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", run);
+  else run();
+})();
