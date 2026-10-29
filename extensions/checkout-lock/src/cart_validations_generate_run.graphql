@@ -4,7 +4,23 @@ query CartValidationsGenerateRunInput($tags: [String!] = [], $collectionIds: [ID
       jsonValue
     }
   }
+  shop {
+    localTime {
+      date
+    }
+  }
+  localization {
+    country {
+      isoCode
+    }
+    market {
+      handle
+    }
+  }
   cart {
+    tokens: attribute(key: "_lr") {
+      value
+    }
     buyerIdentity {
       customer {
         email

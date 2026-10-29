@@ -22,6 +22,8 @@ export default function App() {
       <s-app-nav>
         <s-link href="/app">Home</s-link>
         <s-link href="/app/locks">Locks</s-link>
+        <s-link href="/app/lists">Input lists</s-link>
+        <s-link href="/app/usage">Key usage</s-link>
         <s-link href="/app/settings">Settings</s-link>
       </s-app-nav>
       <Outlet />

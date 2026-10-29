@@ -2,12 +2,12 @@ import type { ActionFunctionArgs } from "react-router";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 
-// Mandatory GDPR webhooks. LockRules stores no customer personal data in its
-// own database (customer conditions are evaluated by Shopify in Liquid and in
-// the checkout function), so data requests and customer redactions have
-// nothing to return or delete. shop/redact removes everything for the shop.
+// Mandatory GDPR webhooks. The only customer data LockRules keeps is the
+// customer id on KeyUsage rows (who unlocked what). Customer conditions are
+// evaluated by Shopify in Liquid and in the checkout function.
+// shop/redact removes everything for the shop.
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { shop, topic } = await authenticate.webhook(request);
+  const { shop, topic, payload } = await authenticate.webhook(request);
 
   console.log(`Received ${topic} webhook for ${shop}`);
 
@@ -16,8 +16,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       await db.shop.deleteMany({ where: { domain: shop } });
       await db.session.deleteMany({ where: { shop } });
       break;
+    case "CUSTOMERS_REDACT": {
+      const customerId = String((payload as { customer?: { id?: number } }).customer?.id ?? "");
+      if (customerId) {
+        await db.keyUsage.deleteMany({ where: { customerId, shop: { domain: shop } } });
+      }
+      break;
+    }
     case "CUSTOMERS_DATA_REQUEST":
-    case "CUSTOMERS_REDACT":
+      // Usage rows are visible to the merchant under Key usage; nothing else to export.
       break;
   }
 

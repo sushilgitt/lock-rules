@@ -9,8 +9,10 @@ name = "LockRules"
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
 # read_products / read_content: resource pickers and lock targets
 # read_themes: detect whether the app embed is enabled
+# read_locales: list published languages for message translations
 # read_validations / write_validations: install the checkout protection function
-scopes = "read_products,read_content,read_themes,read_validations,write_validations"
+# write_app_proxy: /apps/lockrules for passcodes, secret links and IP checks
+scopes = "read_products,read_content,read_themes,read_locales,read_validations,write_validations,write_app_proxy"
 
 [webhooks]
 api_version = "2027-01"
@@ -26,6 +28,11 @@ api_version = "2027-01"
   [[webhooks.subscriptions]]
   uri = "/webhooks/compliance"
   compliance_topics = [ "customers/data_request", "customers/redact", "shop/redact" ]
+
+[app_proxy]
+url = "/proxy"
+prefix = "apps"
+subpath = "lockrules"
 
 [auth]
 redirect_urls = [ "https://lockrules.173.212.233.194.sslip.io/api/auth" ]

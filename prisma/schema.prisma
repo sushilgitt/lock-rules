@@ -43,7 +43,11 @@ model Shop {
   settings       Json      @default("{}")
   lastSyncedAt   DateTime?
   syncError      String?
+  // Signs unlock tokens; mirrored to an app-data metafield for Liquid and the checkout function.
+  hmacSecret     String?
   locks          Lock[]
+  inputLists     InputList[]
+  keyUsages      KeyUsage[]
 }
 
 model Lock {
@@ -88,11 +92,44 @@ model Condition {
   keyId    String
   key      LockKey @relation(fields: [keyId], references: [id], onDelete: Cascade)
   position Int     @default(0)
-  // signed_in | tag | email_in | email_contains | always
+  // see CONDITION_TYPES in app/lib/locks.ts
   type     String
-  // { value: string } or { values: string[] }
+  // { values, listId?, minutes?, prompt?, code? }
   params   Json    @default("{}")
   inverted Boolean @default(false)
 
   @@index([keyId])
+}
+
+// Bulk passcodes or emails, referenced by conditions through params.listId.
+model InputList {
+  id        String   @id @default(cuid())
+  shopId    String
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name      String
+  // passcode | email
+  kind      String
+  // [{ v: "CODE", r?: "/pages/after-unlock" }]
+  entries   Json     @default("[]")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([shopId])
+}
+
+// One row per successful unlock through the app proxy.
+model KeyUsage {
+  id          String   @id @default(cuid())
+  shopId      String
+  shop        Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  lockId      String?
+  conditionId String
+  // passcode | secret_link | confirm | ip
+  kind        String
+  value       String?
+  customerId  String?
+  createdAt   DateTime @default(now())
+
+  @@index([shopId, createdAt])
+  @@index([shopId, customerId])
 }

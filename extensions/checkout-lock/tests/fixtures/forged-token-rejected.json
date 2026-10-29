@@ -1,0 +1,136 @@
+{
+  "payload": {
+    "export": "cart-validations-generate-run",
+    "target": "cart.validations.generate.run",
+    "input": {
+      "validation": {
+        "config": {
+          "jsonValue": {
+            "message": "{title} isn't available for your account.",
+            "secret": "testsecret",
+            "locks": [
+              {
+                "id": "l1",
+                "type": "product",
+                "ids": [
+                  "gid://shopify/Product/1"
+                ],
+                "keys": [
+                  {
+                    "c": [
+                      {
+                        "t": "tag",
+                        "v": [
+                          "vip"
+                        ],
+                        "inv": false
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "l2",
+                "type": "collection",
+                "ids": [
+                  "gid://shopify/Collection/9"
+                ],
+                "keys": [
+                  {
+                    "c": [
+                      {
+                        "t": "signed_in",
+                        "v": [],
+                        "inv": false
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "l3",
+                "type": "product",
+                "ids": [
+                  "gid://shopify/Product/4"
+                ],
+                "keys": [
+                  {
+                    "c": [
+                      {
+                        "t": "passcode",
+                        "v": [],
+                        "inv": false,
+                        "id": "pc1"
+                      }
+                    ]
+                  },
+                  {
+                    "c": [
+                      {
+                        "t": "country",
+                        "v": [
+                          "ca"
+                        ],
+                        "inv": false
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "shop": {
+        "localTime": {
+          "date": "2026-10-29"
+        }
+      },
+      "localization": {
+        "country": {
+          "isoCode": "US"
+        },
+        "market": {
+          "handle": "us"
+        }
+      },
+      "cart": {
+        "tokens": {
+          "value": "pc1.1795996800.0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        "buyerIdentity": null,
+        "lines": [
+          {
+            "merchandise": {
+              "__typename": "ProductVariant",
+              "product": {
+                "id": "gid://shopify/Product/4",
+                "title": "Secret Drop",
+                "inCollections": [
+                  {
+                    "collectionId": "gid://shopify/Collection/9",
+                    "isMember": false
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "output": {
+      "operations": [
+        {
+          "validationAdd": {
+            "errors": [
+              {
+                "message": "Secret Drop isn't available for your account.",
+                "target": "$.cart"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

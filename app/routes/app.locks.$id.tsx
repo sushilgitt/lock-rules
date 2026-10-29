@@ -18,20 +18,29 @@ import {
   updateLock,
 } from "../models/lock.server";
 import { syncShop } from "../lib/compile.server";
+import { listInputLists } from "../models/inputList.server";
 import {
   CONDITION_TYPES,
   DENIED_ACTIONS,
   RESOURCE_TYPES,
   STORE_EXCEPTIONS,
+  conditionMeta,
   conditionNeedsValues,
   emptyLock,
+  newCondition,
+  newUid,
   splitList,
   validateLock,
   type ConditionInput,
+  type ConditionType,
   type LockInput,
   type LockResource,
   type ResourceType,
 } from "../lib/locks";
+
+const CONDITION_GROUPS = [...new Set(CONDITION_TYPES.map((c) => c.group))];
+
+type InputListOption = { id: string; name: string; kind: string; count: number };
 
 type Option = LockResource;
 
@@ -49,6 +58,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   // Pages, blogs and articles have no App Bridge picker, so list them here.
   const res = await admin.graphql(`#graphql
     query LockRulesContent {
+      shop { primaryDomain { url } }
       pages(first: 100, sortKey: TITLE) { nodes { id title handle } }
       blogs(first: 50) { nodes { id title handle } }
       articles(first: 100, sortKey: TITLE) { nodes { id title handle } }
@@ -58,6 +68,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   return {
     isNew: params.id === "new",
     lock,
+    storeUrl: (data?.shop?.primaryDomain?.url as string | undefined) ?? `https://${session.shop}`,
+    inputLists: (await listInputLists(shop.id)) as InputListOption[],
     content: {
       page: (data?.pages?.nodes ?? []) as Option[],
       blog: (data?.blogs?.nodes ?? []) as Option[],
@@ -92,16 +104,29 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
 function ConditionRow({
   condition,
+  inputLists,
+  storeUrl,
   onChange,
   onRemove,
 }: {
   condition: ConditionInput;
+  inputLists: InputListOption[];
+  storeUrl: string;
   onChange: (c: ConditionInput) => void;
   onRemove: () => void;
 }) {
-  const meta = CONDITION_TYPES.find((c) => c.value === condition.type);
+  const meta = conditionMeta(condition.type);
   // Keep the raw text while typing so commas and newlines aren't swallowed.
   const [raw, setRaw] = useState(condition.values.join(", "));
+  const lists = meta?.lists ? inputLists.filter((l) => l.kind === meta.lists) : [];
+  const secretUrl = condition.code ? `${storeUrl.replace(/\/$/, "")}/apps/lockrules/s/${condition.code}` : "";
+
+  const changeType = (type: ConditionType) => {
+    const fresh = newCondition(type);
+    // Keep the uid so existing unlock tokens survive a type change back and forth.
+    onChange({ ...fresh, uid: condition.uid, inverted: condition.inverted });
+    setRaw("");
+  };
 
   return (
     <s-box padding="base" border="base" borderRadius="base">
@@ -110,30 +135,100 @@ function ConditionRow({
           <s-select
             label="Condition"
             value={condition.type}
-            onChange={(e) =>
-              onChange({ ...condition, type: e.currentTarget.value as ConditionInput["type"] })
-            }
+            onChange={(e) => changeType(e.currentTarget.value as ConditionType)}
           >
-            {CONDITION_TYPES.map((c) => (
-              <s-option key={c.value} value={c.value}>
-                {c.label}
-              </s-option>
+            {CONDITION_GROUPS.map((group) => (
+              <s-option-group key={group} label={group}>
+                {CONDITION_TYPES.filter((c) => c.group === group).map((c) => (
+                  <s-option key={c.value} value={c.value}>
+                    {c.label}
+                  </s-option>
+                ))}
+              </s-option-group>
             ))}
           </s-select>
-          <s-button variant="tertiary" icon="delete" accessibilityLabel="Remove condition" onClick={onRemove} />
+          <s-button
+            variant="tertiary"
+            icon="delete"
+            accessibilityLabel="Remove condition"
+            onClick={onRemove}
+          />
         </s-grid>
+
         {conditionNeedsValues(condition.type) && (
           <s-text-area
             label="Values"
             rows={2}
             value={raw}
-            details={"help" in meta! ? meta.help : undefined}
+            details={meta?.help}
             onInput={(e) => {
               setRaw(e.currentTarget.value);
               onChange({ ...condition, values: splitList(e.currentTarget.value) });
             }}
           />
         )}
+        {!conditionNeedsValues(condition.type) && meta?.help && (
+          <s-paragraph color="subdued">{meta.help}</s-paragraph>
+        )}
+
+        {meta?.lists && (
+          <s-select
+            label={meta.lists === "email" ? "Also use email list" : "Also use passcode list"}
+            value={condition.listId ?? ""}
+            onChange={(e) => onChange({ ...condition, listId: e.currentTarget.value || undefined })}
+          >
+            <s-option value="">None</s-option>
+            {lists.map((l) => (
+              <s-option key={l.id} value={l.id}>
+                {l.name} ({l.count.toLocaleString()})
+              </s-option>
+            ))}
+          </s-select>
+        )}
+
+        {condition.type === "confirm" && (
+          <s-text-area
+            label="Prompt"
+            rows={2}
+            value={condition.prompt ?? ""}
+            placeholder="You must be 21 or older to view this page."
+            onInput={(e) => onChange({ ...condition, prompt: e.currentTarget.value })}
+          />
+        )}
+
+        {condition.type === "secret_link" && (
+          <s-stack gap="small-200">
+            <s-text-field label="Secret link" value={secretUrl} readOnly />
+            <s-paragraph color="subdued">
+              Add ?to=/products/handle to send visitors somewhere after unlocking. Save the
+              lock before sharing the link.
+            </s-paragraph>
+            <s-stack direction="inline" gap="small-200">
+              <s-button onClick={() => navigator.clipboard?.writeText(secretUrl)}>Copy link</s-button>
+              <s-button
+                variant="tertiary"
+                onClick={() => onChange({ ...condition, code: newUid() })}
+              >
+                Generate new link
+              </s-button>
+            </s-stack>
+          </s-stack>
+        )}
+
+        {meta?.remote && (
+          <s-number-field
+            label="Access lasts (minutes)"
+            min={0}
+            step={1}
+            inputMode="numeric"
+            value={String(condition.minutes ?? 0)}
+            details={condition.type === "ip" ? "0 = 24 hours" : "0 = 30 days"}
+            onInput={(e) =>
+              onChange({ ...condition, minutes: Math.max(0, Number(e.currentTarget.value) || 0) })
+            }
+          />
+        )}
+
         <s-checkbox
           label="Invert: pass when this is NOT true"
           checked={condition.inverted}
@@ -145,7 +240,7 @@ function ConditionRow({
 }
 
 export default function LockEditor() {
-  const { isNew, lock: initial, content } = useLoaderData<typeof loader>();
+  const { isNew, lock: initial, content, inputLists, storeUrl } = useLoaderData<typeof loader>();
   const [lock, setLock] = useState<LockInput>(initial);
   const fetcher = useFetcher<typeof action>();
   const shopify = useAppBridge();
@@ -336,8 +431,10 @@ export default function LockEditor() {
                 </s-grid>
                 {key.conditions.map((c, i) => (
                   <ConditionRow
-                    key={`${k}-${i}-${c.type}`}
+                    key={`${c.uid}-${c.type}`}
                     condition={c}
+                    inputLists={inputLists}
+                    storeUrl={storeUrl}
                     onChange={(next) =>
                       updateKey(
                         k,
@@ -357,10 +454,7 @@ export default function LockEditor() {
                     variant="tertiary"
                     icon="plus"
                     onClick={() =>
-                      updateKey(k, [
-                        ...key.conditions,
-                        { type: "tag", values: [], inverted: false },
-                      ])
+                      updateKey(k, [...key.conditions, newCondition("tag")])
                     }
                   >
                     And condition
@@ -373,10 +467,7 @@ export default function LockEditor() {
             <s-button
               icon="plus"
               onClick={() =>
-                set("keys", [
-                  ...lock.keys,
-                  { conditions: [{ type: "signed_in", values: [], inverted: false }] },
-                ])
+                set("keys", [...lock.keys, { conditions: [newCondition("signed_in")] }])
               }
             >
               Add key

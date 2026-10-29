@@ -7,6 +7,7 @@
         "config": {
           "jsonValue": {
             "message": "{title} isn't available for your account.",
+            "secret": "testsecret",
             "locks": [
               {
                 "id": "l1",
@@ -45,12 +46,56 @@
                     ]
                   }
                 ]
+              },
+              {
+                "id": "l3",
+                "type": "product",
+                "ids": [
+                  "gid://shopify/Product/4"
+                ],
+                "keys": [
+                  {
+                    "c": [
+                      {
+                        "t": "passcode",
+                        "v": [],
+                        "inv": false,
+                        "id": "pc1"
+                      }
+                    ]
+                  },
+                  {
+                    "c": [
+                      {
+                        "t": "country",
+                        "v": [
+                          "ca"
+                        ],
+                        "inv": false
+                      }
+                    ]
+                  }
+                ]
               }
             ]
           }
         }
       },
+      "shop": {
+        "localTime": {
+          "date": "2026-10-29"
+        }
+      },
+      "localization": {
+        "country": {
+          "isoCode": "US"
+        },
+        "market": {
+          "handle": "us"
+        }
+      },
       "cart": {
+        "tokens": null,
         "buyerIdentity": null,
         "lines": [
           {

@@ -1,12 +1,28 @@
 import type { Prisma } from "@prisma/client";
 import prisma from "../db.server";
-import type {
-  ConditionInput,
-  DeniedAction,
-  LockInput,
-  LockResource,
-  ResourceType,
+import {
+  newUid,
+  type ConditionInput,
+  type DeniedAction,
+  type LockInput,
+  type LockResource,
+  type ResourceType,
 } from "../lib/locks";
+
+export type ConditionParams = Omit<ConditionInput, "type" | "inverted">;
+
+/** Params as stored, filling in ids for rows saved before they existed. */
+export function readParams(raw: unknown): ConditionParams {
+  const p = (raw ?? {}) as Partial<ConditionParams>;
+  return {
+    uid: p.uid || newUid(),
+    values: (p.values ?? []).map(String),
+    ...(p.listId ? { listId: p.listId } : {}),
+    ...(p.minutes ? { minutes: Number(p.minutes) } : {}),
+    ...(p.prompt ? { prompt: p.prompt } : {}),
+    ...(p.code ? { code: p.code } : {}),
+  };
+}
 
 const lockInclude = {
   keys: {
@@ -38,16 +54,31 @@ export async function getLock(shopId: string, id: string) {
 }
 
 function keysCreate(input: LockInput) {
+  const seen = new Set<string>();
   return {
     create: input.keys.map((key, k) => ({
       position: k,
       conditions: {
-        create: key.conditions.map((c, i) => ({
-          position: i,
-          type: c.type,
-          params: { values: c.values },
-          inverted: c.inverted,
-        })),
+        create: key.conditions.map((c, i) => {
+          // Copy-pasted conditions must not share a uid, or one token would open both.
+          let uid = c.uid || newUid();
+          if (seen.has(uid)) uid = newUid();
+          seen.add(uid);
+          const params = readParams({
+            uid,
+            values: c.values,
+            listId: c.listId,
+            minutes: c.minutes,
+            prompt: c.prompt?.trim(),
+            code: c.type === "secret_link" ? c.code || newUid() : undefined,
+          });
+          return {
+            position: i,
+            type: c.type,
+            params: params as unknown as Prisma.InputJsonValue,
+            inverted: c.inverted,
+          };
+        }),
       },
     })),
   };
@@ -109,8 +140,8 @@ export function toLockInput(lock: LockWithKeys): LockInput {
     keys: lock.keys.map((key) => ({
       conditions: key.conditions.map(
         (c): ConditionInput => ({
+          ...readParams(c.params),
           type: c.type as ConditionInput["type"],
-          values: ((c.params as { values?: string[] })?.values ?? []).map(String),
           inverted: c.inverted,
         }),
       ),
