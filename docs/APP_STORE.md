@@ -35,7 +35,8 @@ Pro, so development stores stay fully usable.
 ### Approvals to request
 0. **Network access for the members-access customer account extension**
    (Partner Dashboard › the extension › request network access), so the block
-   can call `/customer/access`.
+   can call `/customer/access`. The extension waits in `extensions-pending/`
+   until then (see the README there).
 1. **Protected customer data**: Level 2 (name, email) for customers and
    orders. Needed for "has purchased", customer approval and Klaviyo
    membership keys. After approval, uncomment the `orders/paid` and
