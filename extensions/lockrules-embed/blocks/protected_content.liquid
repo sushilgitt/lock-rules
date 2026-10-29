@@ -1,0 +1,47 @@
+{%- liquid
+  assign cfg = app.metafields.lockrules.config.value
+  assign wanted = block.settings.lock_id | strip
+  assign granted = true
+  for lock in cfg.locks
+    if lock.id == wanted
+      capture unlocked
+        render 'lr_unlocked'
+      endcapture
+      capture open
+        render 'lr_open', lock: lock, unlocked: unlocked
+      endcapture
+      if open == blank
+        assign granted = false
+      endif
+      break
+    endif
+  endfor
+-%}
+<div class="lockrules-content page-width" {{ block.shopify_attributes }}>
+  {%- if granted -%}
+    {{ block.settings.content }}
+  {%- else -%}
+    {{ block.settings.denied_content }}
+    {%- unless customer -%}
+      <p><a class="button" href="{{ routes.account_login_url }}?return_url={{ request.path | url_encode }}">{{ block.settings.login_text }}</a></p>
+    {%- endunless -%}
+  {%- endif -%}
+</div>
+
+{% schema %}
+{
+  "name": "Protected content",
+  "target": "section",
+  "settings": [
+    {
+      "type": "text",
+      "id": "lock_id",
+      "label": "Lock ID",
+      "info": "Copy it from the lock in the LockRules app. Content shows when the visitor holds a key to that lock (or the lock is turned off)."
+    },
+    { "type": "richtext", "id": "content", "label": "Content for visitors with access" },
+    { "type": "richtext", "id": "denied_content", "label": "Content for everyone else", "default": "<p>This content is for members only.</p>" },
+    { "type": "text", "id": "login_text", "label": "Sign-in button", "default": "Sign in" }
+  ]
+}
+{% endschema %}

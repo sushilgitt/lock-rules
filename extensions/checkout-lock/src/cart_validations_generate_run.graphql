@@ -1,12 +1,45 @@
-query CartValidationsGenerateRunInput($tags: [String!] = [], $collectionIds: [ID!] = []) {
+query CartValidationsGenerateRunInput(
+  $tags: [String!] = []
+  $productTags: [String!] = []
+  $collectionIds: [ID!] = []
+  $d0: DateTimeWithoutTimezone = "2000-01-01T00:00:00"
+  $d1: DateTimeWithoutTimezone = "2000-01-01T00:00:00"
+  $d2: DateTimeWithoutTimezone = "2000-01-01T00:00:00"
+  $d3: DateTimeWithoutTimezone = "2000-01-01T00:00:00"
+  $d4: DateTimeWithoutTimezone = "2000-01-01T00:00:00"
+  $d5: DateTimeWithoutTimezone = "2000-01-01T00:00:00"
+  $d6: DateTimeWithoutTimezone = "2000-01-01T00:00:00"
+  $d7: DateTimeWithoutTimezone = "2000-01-01T00:00:00"
+  $w0s: TimeWithoutTimezone = "00:00:00"
+  $w0e: TimeWithoutTimezone = "00:00:01"
+  $w1s: TimeWithoutTimezone = "00:00:00"
+  $w1e: TimeWithoutTimezone = "00:00:01"
+  $w2s: TimeWithoutTimezone = "00:00:00"
+  $w2e: TimeWithoutTimezone = "00:00:01"
+  $w3s: TimeWithoutTimezone = "00:00:00"
+  $w3e: TimeWithoutTimezone = "00:00:01"
+) {
   validation {
     config: metafield(namespace: "$app", key: "config") {
       jsonValue
     }
   }
+  presentmentCurrencyRate
   shop {
     localTime {
       date
+      d0: dateTimeAfter(dateTime: $d0)
+      d1: dateTimeAfter(dateTime: $d1)
+      d2: dateTimeAfter(dateTime: $d2)
+      d3: dateTimeAfter(dateTime: $d3)
+      d4: dateTimeAfter(dateTime: $d4)
+      d5: dateTimeAfter(dateTime: $d5)
+      d6: dateTimeAfter(dateTime: $d6)
+      d7: dateTimeAfter(dateTime: $d7)
+      w0: timeBetween(startTime: $w0s, endTime: $w0e)
+      w1: timeBetween(startTime: $w1s, endTime: $w1e)
+      w2: timeBetween(startTime: $w2s, endTime: $w2e)
+      w3: timeBetween(startTime: $w3s, endTime: $w3e)
     }
   }
   localization {
@@ -21,9 +54,18 @@ query CartValidationsGenerateRunInput($tags: [String!] = [], $collectionIds: [ID
     tokens: attribute(key: "_lr") {
       value
     }
+    cost {
+      subtotalAmount {
+        amount
+      }
+    }
     buyerIdentity {
       customer {
         email
+        numberOfOrders
+        purchased: metafield(namespace: "$app:lockrules", key: "purchased") {
+          jsonValue
+        }
         hasTags(tags: $tags) {
           tag
           hasTag
@@ -34,9 +76,15 @@ query CartValidationsGenerateRunInput($tags: [String!] = [], $collectionIds: [ID
       merchandise {
         __typename
         ... on ProductVariant {
+          id
           product {
             id
             title
+            vendor
+            productTags: hasTags(tags: $productTags) {
+              tag
+              hasTag
+            }
             inCollections(ids: $collectionIds) {
               collectionId
               isMember

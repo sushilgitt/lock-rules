@@ -1,0 +1,34 @@
+{%- liquid
+  capture denied
+    render 'lr_product_denied', product: product
+  endcapture
+  assign variant = product.selected_or_first_available_variant
+-%}
+<div class="lockrules-price" {{ block.shopify_attributes }}>
+  {%- if denied == blank -%}
+    <span class="price price-item">{{ variant.price | money }}</span>
+    {%- if variant.compare_at_price > variant.price -%}
+      <s class="price-item price-item--regular">{{ variant.compare_at_price | money }}</s>
+    {%- endif -%}
+  {%- else -%}
+    <p class="lockrules-price__denied">
+      {%- if customer -%}
+        {{ block.settings.denied_text }}
+      {%- else -%}
+        <a href="{{ routes.account_login_url }}?return_url={{ request.path | url_encode }}">{{ block.settings.login_text }}</a>
+      {%- endif -%}
+    </p>
+  {%- endif -%}
+</div>
+
+{% schema %}
+{
+  "name": "Protected price",
+  "target": "section",
+  "enabled_on": { "templates": ["product"] },
+  "settings": [
+    { "type": "text", "id": "login_text", "label": "Shown to guests", "default": "Sign in to see prices" },
+    { "type": "text", "id": "denied_text", "label": "Shown to signed-in customers without access", "default": "Prices are available to approved accounts." }
+  ]
+}
+{% endschema %}

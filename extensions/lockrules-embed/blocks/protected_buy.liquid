@@ -1,0 +1,55 @@
+{%- liquid
+  capture denied
+    render 'lr_product_denied', product: product
+  endcapture
+  assign current = product.selected_or_first_available_variant
+-%}
+<div class="lockrules-buy" {{ block.shopify_attributes }}>
+  {%- if denied == blank -%}
+    {%- form 'product', product, class: 'lockrules-buy__form' -%}
+      {%- if product.has_only_default_variant -%}
+        <input type="hidden" name="id" value="{{ current.id }}">
+      {%- else -%}
+        <label class="form__label" for="LockRulesVariant-{{ block.id }}">{{ block.settings.variant_label }}</label>
+        <select id="LockRulesVariant-{{ block.id }}" name="id" class="select__select">
+          {%- for v in product.variants -%}
+            <option value="{{ v.id }}" {% if v == current %}selected{% endif %} {% unless v.available %}disabled{% endunless %}>
+              {{ v.title | escape }} - {{ v.price | money }}
+            </option>
+          {%- endfor -%}
+        </select>
+      {%- endif -%}
+      {%- if block.settings.show_quantity -%}
+        <label class="form__label" for="LockRulesQty-{{ block.id }}">{{ block.settings.quantity_label }}</label>
+        <input id="LockRulesQty-{{ block.id }}" type="number" name="quantity" value="1" min="1" class="quantity__input">
+      {%- endif -%}
+      <button type="submit" class="button button--primary" {% unless current.available %}disabled{% endunless %}>
+        {{ block.settings.button_label }}
+      </button>
+    {%- endform -%}
+  {%- else -%}
+    <p class="lockrules-buy__denied">
+      {%- if customer -%}
+        {{ block.settings.denied_text }}
+      {%- else -%}
+        <a class="button" href="{{ routes.account_login_url }}?return_url={{ request.path | url_encode }}">{{ block.settings.login_text }}</a>
+      {%- endif -%}
+    </p>
+  {%- endif -%}
+</div>
+
+{% schema %}
+{
+  "name": "Protected add to cart",
+  "target": "section",
+  "enabled_on": { "templates": ["product"] },
+  "settings": [
+    { "type": "text", "id": "button_label", "label": "Button label", "default": "Add to cart" },
+    { "type": "text", "id": "variant_label", "label": "Variant label", "default": "Option" },
+    { "type": "checkbox", "id": "show_quantity", "label": "Show quantity", "default": true },
+    { "type": "text", "id": "quantity_label", "label": "Quantity label", "default": "Quantity" },
+    { "type": "text", "id": "login_text", "label": "Shown to guests", "default": "Sign in to buy" },
+    { "type": "text", "id": "denied_text", "label": "Shown to signed-in customers without access", "default": "This product is available to approved accounts." }
+  ]
+}
+{% endschema %}

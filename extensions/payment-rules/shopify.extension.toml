@@ -1,0 +1,25 @@
+api_version = "2026-07"
+
+[[extensions]]
+name = "t:name"
+handle = "payment-rules"
+type = "function"
+uid = "de1e42f7-1fac-82d9-7a6b-3fe91198d7481d07a9b0"
+description = "t:description"
+
+  [[extensions.targeting]]
+  target = "cart.payment-methods.transform.run"
+  input_query = "src/cart_payment_methods_transform_run.graphql"
+  export = "cart-payment-methods-transform-run"
+
+    [extensions.targeting.input_variables]
+    namespace = "$app"
+    key = "vars"
+
+  [extensions.build]
+  command = ""
+  path = "dist/function.wasm"
+
+  [extensions.ui.paths]
+  create = "/app/payments"
+  details = "/app/payments"

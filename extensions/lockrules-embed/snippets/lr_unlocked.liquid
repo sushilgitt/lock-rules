@@ -1,0 +1,29 @@
+{%- doc -%}
+  Outputs "|uid1|uid2|": condition uids unlocked by a valid, unexpired token in the
+  `_lr` cart attribute. Tokens are "<uid>.<exp>.<hmac>" signed with
+  app.metafields.lockrules.secret (see app/lib/tokens.server.ts).
+
+  @example
+  {% capture unlocked %}{% render 'lr_unlocked' %}{% endcapture %}
+{%- enddoc -%}
+{%- liquid
+  assign secret = app.metafields.lockrules.secret.value
+  assign out = '|'
+  if secret != blank and cart.attributes._lr != blank
+    assign now = 'now' | date: '%s' | plus: 0
+    assign tokens = cart.attributes._lr | split: ' '
+    for token in tokens
+      assign parts = token | split: '.'
+      if parts.size == 3
+        assign exp = parts[1] | plus: 0
+        if exp > now
+          assign expected = parts[0] | append: '.' | append: parts[1] | hmac_sha256: secret
+          if expected == parts[2]
+            assign out = out | append: parts[0] | append: '|'
+          endif
+        endif
+      endif
+    endfor
+  endif
+  echo out
+-%}

@@ -7,9 +7,33 @@ export const RESOURCE_TYPES = [
   { value: "blog", label: "Blogs" },
   { value: "article", label: "Blog posts" },
   { value: "store", label: "Entire store" },
+  { value: "variant", label: "Product variants" },
+  { value: "vendor", label: "Products by vendor" },
+  { value: "product_tag", label: "Products by tag" },
 ] as const;
 
 export type ResourceType = (typeof RESOURCE_TYPES)[number]["value"];
+
+// Resource types whose "resources" are typed-in names rather than picked items.
+export const NAMED_RESOURCE_TYPES: ResourceType[] = ["vendor", "product_tag"];
+
+export const PROTECT_MODES = [
+  { value: "page", label: "Hide the whole page" },
+  { value: "commerce", label: "Hide price and add to cart only" },
+  { value: "manual", label: "Manual: only LockRules app blocks" },
+] as const;
+
+export type ProtectMode = (typeof PROTECT_MODES)[number]["value"];
+
+export const WEEKDAYS = [
+  { value: 1, label: "Mon" },
+  { value: 2, label: "Tue" },
+  { value: 3, label: "Wed" },
+  { value: 4, label: "Thu" },
+  { value: 5, label: "Fri" },
+  { value: 6, label: "Sat" },
+  { value: 7, label: "Sun" },
+] as const;
 
 // group: shown as option groups in the editor.
 // remote: checked by our server through the app proxy, which issues a signed token.
@@ -97,6 +121,59 @@ export const CONDITION_TYPES = [
     input: "none",
     help: "Opens the lock for everyone. Combine with other conditions or use for exclusions.",
   },
+  {
+    value: "order_count",
+    group: "Customer history",
+    label: "Customer has placed at least N orders",
+    input: "number",
+  },
+  {
+    value: "purchased",
+    group: "Customer history",
+    label: "Customer has purchased a product",
+    input: "products",
+    help: "Passes if they bought any of these. Needs customer data access; run “Sync purchase history” in Settings once.",
+  },
+  {
+    value: "cart_product",
+    group: "Cart",
+    label: "Cart contains a product",
+    input: "products",
+  },
+  {
+    value: "cart_variant",
+    group: "Cart",
+    label: "Cart contains a variant",
+    input: "variants",
+  },
+  {
+    value: "cart_subtotal",
+    group: "Cart",
+    label: "Cart subtotal is at least",
+    input: "amount",
+    help: "In your store currency. Shoppers paying in another currency are compared at checkout's exchange rate.",
+  },
+  {
+    value: "date_after",
+    group: "Time",
+    label: "It's after a date",
+    input: "datetime",
+    help: "In your store's timezone.",
+  },
+  {
+    value: "date_before",
+    group: "Time",
+    label: "It's before a date",
+    input: "datetime",
+    help: "In your store's timezone.",
+  },
+  {
+    value: "schedule",
+    group: "Time",
+    label: "It's within a weekly schedule",
+    input: "schedule",
+    help: "In your store's timezone. An end time earlier than the start runs overnight.",
+  },
 ] as const;
 
 export type ConditionType = (typeof CONDITION_TYPES)[number]["value"];
@@ -146,6 +223,16 @@ export interface ConditionInput {
   prompt?: string;
   // secret_link: the code in the link
   code?: string;
+  // products / variants inputs: display titles, parallel to values (gids)
+  titles?: string[];
+  // amount (store currency) / number (order count)
+  amount?: number;
+  // datetime: local "YYYY-MM-DDTHH:MM" in the store's timezone
+  at?: string;
+  // schedule: ISO weekdays (1 = Monday) and local "HH:MM" window
+  days?: number[];
+  from?: string;
+  to?: string;
 }
 
 export function newUid() {
@@ -161,6 +248,8 @@ export function newCondition(type: ConditionType = "tag"): ConditionInput {
     values: [],
     inverted: false,
     ...(type === "secret_link" ? { code: newUid() } : {}),
+    ...(type === "schedule" ? { days: [1, 2, 3, 4, 5], from: "09:00", to: "17:00" } : {}),
+    ...(type === "order_count" ? { amount: 1 } : {}),
   };
 }
 
@@ -179,6 +268,8 @@ export interface LockInput {
   deniedMessage: string;
   redirectUrl: string;
   storeExceptions: string[];
+  protect: ProtectMode;
+  seoHidden: boolean;
   keys: KeyInput[];
 }
 
@@ -190,6 +281,8 @@ export function emptyLock(): LockInput {
     enabled: true,
     hideFromLists: false,
     hideNavLinks: false,
+    protect: "page",
+    seoHidden: false,
     deniedAction: "login",
     deniedMessage: "",
     redirectUrl: "",
@@ -237,6 +330,17 @@ export function validateLock(lock: LockInput): string[] {
         errors.push(`Key ${k + 1}, condition ${i + 1}: use two-letter country codes.`);
       } else if (c.type === "secret_link" && !c.code) {
         errors.push(`Key ${k + 1}, condition ${i + 1}: secret link is missing its code.`);
+      } else if (["products", "variants"].includes(conditionMeta(c.type)?.input ?? "") && !c.values.length) {
+        errors.push(`Key ${k + 1}, condition ${i + 1}: pick at least one item.`);
+      } else if (["amount", "number"].includes(conditionMeta(c.type)?.input ?? "") && !(Number(c.amount) >= 0)) {
+        errors.push(`Key ${k + 1}, condition ${i + 1}: enter a number.`);
+      } else if (conditionMeta(c.type)?.input === "datetime" && !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(c.at ?? "")) {
+        errors.push(`Key ${k + 1}, condition ${i + 1}: enter a date and time.`);
+      } else if (
+        c.type === "schedule" &&
+        (!c.days?.length || !/^\d{2}:\d{2}$/.test(c.from ?? "") || !/^\d{2}:\d{2}$/.test(c.to ?? "") || c.from === c.to)
+      ) {
+        errors.push(`Key ${k + 1}, condition ${i + 1}: pick days and a start and end time (HH:MM).`);
       }
     });
   });

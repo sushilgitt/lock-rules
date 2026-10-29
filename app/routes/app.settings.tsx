@@ -9,9 +9,14 @@ import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 
 import { authenticate } from "../shopify.server";
-import prisma from "../db.server";
 import { ensureShop } from "../models/lock.server";
 import { syncShop } from "../lib/compile.server";
+import {
+  applyBackfill,
+  currentBackfill,
+  startPurchaseBackfill,
+  updateSettings,
+} from "../lib/customers.server";
 import { MESSAGE_FIELDS, getSettings, type Messages, type ShopSettings } from "../lib/settings";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -23,17 +28,40 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const locales = ((data?.shopLocales ?? []) as { locale: string; name: string; primary: boolean }[])
     .filter((l) => !l.primary)
     .map((l) => ({ locale: l.locale.toLowerCase(), name: l.name }));
-  return { settings: getSettings(shop.settings), locales };
+  const backfill = await currentBackfill(admin.graphql).catch(() => null);
+  return {
+    settings: getSettings(shop.settings),
+    locales,
+    backfill: backfill && { status: backfill.status, completedAt: backfill.completedAt, ready: Boolean(backfill.url) },
+  };
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
-  const settings = getSettings(await request.json());
-  await prisma.shop.update({
-    where: { domain: session.shop },
-    data: { settings: settings as any },
-  });
-  return syncShop(admin.graphql, session.shop);
+  const body = await request.json();
+
+  if (body.intent === "backfill-start") {
+    try {
+      await startPurchaseBackfill(admin.graphql);
+      return { ok: true, message: "Purchase history sync started. Check back in a few minutes." };
+    } catch (e) {
+      return { ok: false, message: e instanceof Error ? e.message : String(e) };
+    }
+  }
+  if (body.intent === "backfill-apply") {
+    const op = await currentBackfill(admin.graphql);
+    if (op?.status !== "COMPLETED" || !op.url) {
+      return { ok: false, message: "The sync hasn't finished yet." };
+    }
+    const customers = await applyBackfill(admin.graphql, op.url);
+    return { ok: true, message: `Updated purchase history for ${customers} customers.` };
+  }
+
+  // Only messages live on this page; other settings are saved by their own pages.
+  const { messages, translations } = getSettings(body);
+  await updateSettings(session.shop, { messages, translations });
+  const sync = await syncShop(admin.graphql, session.shop);
+  return { ok: sync.ok, message: sync.ok ? "Settings saved" : "Saved, but sync had problems" };
 };
 
 function MessageFields({
@@ -72,15 +100,14 @@ function MessageFields({
 }
 
 export default function Settings() {
-  const { settings: initial, locales } = useLoaderData<typeof loader>();
+  const { settings: initial, locales, backfill } = useLoaderData<typeof loader>();
   const [settings, setSettings] = useState<ShopSettings>(initial);
   const [locale, setLocale] = useState(locales[0]?.locale ?? "");
   const fetcher = useFetcher<typeof action>();
   const shopify = useAppBridge();
 
   useEffect(() => {
-    if (fetcher.data?.ok) shopify.toast.show("Settings saved");
-    else if (fetcher.data) shopify.toast.show("Saved, but sync had problems", { isError: true });
+    if (fetcher.data) shopify.toast.show(fetcher.data.message, { isError: !fetcher.data.ok });
   }, [fetcher.data, shopify]);
 
   const setMessage = (key: keyof Messages, value: string) =>
@@ -114,6 +141,42 @@ export default function Settings() {
           these defaults.
         </s-paragraph>
         <MessageFields values={settings.messages} onChange={setMessage} />
+      </s-section>
+
+      <s-section heading="Purchase history">
+        <s-stack gap="base">
+          <s-paragraph>
+            “Customer has purchased a product” keys use each customer&apos;s order history. New
+            orders are added automatically; sync once to load past orders.
+          </s-paragraph>
+          {backfill && (
+            <s-paragraph color="subdued">
+              Last sync: {backfill.status.toLowerCase()}
+              {backfill.completedAt ? ` (${new Date(backfill.completedAt).toLocaleString()})` : ""}
+            </s-paragraph>
+          )}
+          <s-stack direction="inline" gap="small-200">
+            <s-button
+              disabled={fetcher.state !== "idle" || backfill?.status === "RUNNING"}
+              onClick={() =>
+                fetcher.submit({ intent: "backfill-start" } as any, { method: "post", encType: "application/json" })
+              }
+            >
+              Sync purchase history
+            </s-button>
+            {backfill?.status === "COMPLETED" && backfill.ready && (
+              <s-button
+                variant="primary"
+                disabled={fetcher.state !== "idle"}
+                onClick={() =>
+                  fetcher.submit({ intent: "backfill-apply" } as any, { method: "post", encType: "application/json" })
+                }
+              >
+                Apply finished sync
+              </s-button>
+            )}
+          </s-stack>
+        </s-stack>
       </s-section>
 
       <s-section heading="Translations">

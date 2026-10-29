@@ -10,10 +10,27 @@ export interface Messages {
   checkout: string;
 }
 
+// Hides payment methods whose name contains one of `methods`, when the customer
+// is missing (or has) one of `tags`. Mirrors extensions/payment-rules.
+export interface PaymentRule {
+  methods: string[];
+  when: "missing_tag" | "has_tag";
+  tags: string[];
+}
+
+export interface ApprovalSettings {
+  enabled: boolean;
+  pendingTag: string;
+  approvedTag: string;
+  rejectedTag: string;
+}
+
 export interface ShopSettings {
   messages: Messages;
   // Per-locale overrides keyed by ISO code ("fr", "pt-BR"); missing keys fall back to messages.
   translations: Record<string, Partial<Messages>>;
+  paymentRules: PaymentRule[];
+  approval: ApprovalSettings;
 }
 
 export const MESSAGE_FIELDS: { key: keyof Messages; label: string; multiline?: boolean }[] = [
@@ -41,7 +58,17 @@ export const DEFAULT_SETTINGS: ShopSettings = {
     checkout: "{title} isn't available for your account.",
   },
   translations: {},
+  paymentRules: [],
+  approval: {
+    enabled: false,
+    pendingTag: "pending-approval",
+    approvedTag: "approved",
+    rejectedTag: "rejected",
+  },
 };
+
+const cleanList = (list: unknown) =>
+  Array.isArray(list) ? [...new Set(list.map((v) => String(v).trim().toLowerCase()).filter(Boolean))] : [];
 
 export function getSettings(raw: unknown): ShopSettings {
   const s = (raw ?? {}) as Partial<ShopSettings>;
@@ -54,8 +81,25 @@ export function getSettings(raw: unknown): ShopSettings {
       translations[locale.toLowerCase()] = clean;
     }
   }
+  const paymentRules = (Array.isArray(s.paymentRules) ? s.paymentRules : [])
+    .map((r): PaymentRule => ({
+      methods: cleanList(r?.methods),
+      when: r?.when === "has_tag" ? "has_tag" : "missing_tag",
+      tags: cleanList(r?.tags),
+    }))
+    .filter((r) => r.methods.length && r.tags.length);
+  const a = { ...DEFAULT_SETTINGS.approval, ...(s.approval ?? {}) };
+  const tag = (v: string, fallback: string) => v?.trim() || fallback;
+
   return {
     messages: { ...DEFAULT_SETTINGS.messages, ...(s.messages ?? {}) },
     translations,
+    paymentRules,
+    approval: {
+      enabled: Boolean(a.enabled),
+      pendingTag: tag(a.pendingTag, DEFAULT_SETTINGS.approval.pendingTag),
+      approvedTag: tag(a.approvedTag, DEFAULT_SETTINGS.approval.approvedTag),
+      rejectedTag: tag(a.rejectedTag, DEFAULT_SETTINGS.approval.rejectedTag),
+    },
   };
 }

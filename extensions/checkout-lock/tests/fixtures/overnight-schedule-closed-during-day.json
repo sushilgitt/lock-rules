@@ -1,0 +1,259 @@
+{
+  "payload": {
+    "export": "cart-validations-generate-run",
+    "target": "cart.validations.generate.run",
+    "input": {
+      "validation": {
+        "config": {
+          "jsonValue": {
+            "message": "{title} isn't available for your account.",
+            "secret": "testsecret",
+            "locks": [
+              {
+                "id": "l1",
+                "type": "product",
+                "ids": [
+                  "gid://shopify/Product/1"
+                ],
+                "keys": [
+                  {
+                    "c": [
+                      {
+                        "t": "tag",
+                        "v": [
+                          "vip"
+                        ],
+                        "inv": false
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "l2",
+                "type": "collection",
+                "ids": [
+                  "gid://shopify/Collection/9"
+                ],
+                "keys": [
+                  {
+                    "c": [
+                      {
+                        "t": "signed_in",
+                        "v": [],
+                        "inv": false
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "l3",
+                "type": "product",
+                "ids": [
+                  "gid://shopify/Product/4"
+                ],
+                "keys": [
+                  {
+                    "c": [
+                      {
+                        "t": "passcode",
+                        "v": [],
+                        "inv": false,
+                        "id": "pc1"
+                      }
+                    ]
+                  },
+                  {
+                    "c": [
+                      {
+                        "t": "country",
+                        "v": [
+                          "ca"
+                        ],
+                        "inv": false
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "l4",
+                "type": "vendor",
+                "ids": [
+                  "acme wholesale"
+                ],
+                "keys": [
+                  {
+                    "c": [
+                      {
+                        "t": "order_count",
+                        "v": [],
+                        "inv": false,
+                        "n": 3
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "l5",
+                "type": "product_tag",
+                "ids": [
+                  "members-only"
+                ],
+                "keys": [
+                  {
+                    "c": [
+                      {
+                        "t": "purchased",
+                        "v": [
+                          "77"
+                        ],
+                        "inv": false
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "l6",
+                "type": "variant",
+                "ids": [
+                  "gid://shopify/ProductVariant/601"
+                ],
+                "keys": [
+                  {
+                    "c": [
+                      {
+                        "t": "cart_subtotal",
+                        "v": [],
+                        "inv": false,
+                        "n": 100
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "l7",
+                "type": "product",
+                "ids": [
+                  "gid://shopify/Product/8"
+                ],
+                "keys": [
+                  {
+                    "c": [
+                      {
+                        "t": "date_after",
+                        "v": [],
+                        "inv": false,
+                        "s": 0
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "l8",
+                "type": "product",
+                "ids": [
+                  "gid://shopify/Product/9"
+                ],
+                "keys": [
+                  {
+                    "c": [
+                      {
+                        "t": "schedule",
+                        "v": [
+                          "4"
+                        ],
+                        "inv": false,
+                        "s": 0,
+                        "o": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "presentmentCurrencyRate": "1.0",
+      "shop": {
+        "localTime": {
+          "date": "2026-10-29",
+          "d0": false,
+          "d1": false,
+          "d2": false,
+          "d3": false,
+          "d4": false,
+          "d5": false,
+          "d6": false,
+          "d7": false,
+          "w0": true,
+          "w1": false,
+          "w2": false,
+          "w3": false
+        }
+      },
+      "localization": {
+        "country": {
+          "isoCode": "US"
+        },
+        "market": {
+          "handle": "us"
+        }
+      },
+      "cart": {
+        "tokens": null,
+        "cost": {
+          "subtotalAmount": {
+            "amount": "10.0"
+          }
+        },
+        "buyerIdentity": null,
+        "lines": [
+          {
+            "merchandise": {
+              "__typename": "ProductVariant",
+              "id": "gid://shopify/ProductVariant/900",
+              "product": {
+                "id": "gid://shopify/Product/9",
+                "title": "Late Night Deal",
+                "vendor": "Store",
+                "productTags": [
+                  {
+                    "tag": "members-only",
+                    "hasTag": false
+                  }
+                ],
+                "inCollections": [
+                  {
+                    "collectionId": "gid://shopify/Collection/9",
+                    "isMember": false
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "output": {
+      "operations": [
+        {
+          "validationAdd": {
+            "errors": [
+              {
+                "message": "Late Night Deal isn't available for your account.",
+                "target": "$.cart"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

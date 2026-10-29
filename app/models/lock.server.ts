@@ -5,6 +5,7 @@ import {
   type ConditionInput,
   type DeniedAction,
   type LockInput,
+  type ProtectMode,
   type LockResource,
   type ResourceType,
 } from "../lib/locks";
@@ -21,6 +22,12 @@ export function readParams(raw: unknown): ConditionParams {
     ...(p.minutes ? { minutes: Number(p.minutes) } : {}),
     ...(p.prompt ? { prompt: p.prompt } : {}),
     ...(p.code ? { code: p.code } : {}),
+    ...(p.titles?.length ? { titles: p.titles.map(String) } : {}),
+    ...(p.amount !== undefined && p.amount !== null ? { amount: Number(p.amount) } : {}),
+    ...(p.at ? { at: String(p.at) } : {}),
+    ...(p.days?.length ? { days: p.days.map(Number).filter((d) => d >= 1 && d <= 7) } : {}),
+    ...(p.from ? { from: String(p.from) } : {}),
+    ...(p.to ? { to: String(p.to) } : {}),
   };
 }
 
@@ -71,6 +78,12 @@ function keysCreate(input: LockInput) {
             minutes: c.minutes,
             prompt: c.prompt?.trim(),
             code: c.type === "secret_link" ? c.code || newUid() : undefined,
+            titles: c.titles,
+            amount: c.amount,
+            at: c.at,
+            days: c.days,
+            from: c.from,
+            to: c.to,
           });
           return {
             position: i,
@@ -92,6 +105,8 @@ function lockData(input: LockInput) {
     enabled: input.enabled,
     hideFromLists: input.hideFromLists,
     hideNavLinks: input.hideNavLinks,
+    protect: input.protect,
+    seoHidden: input.seoHidden,
     deniedAction: input.deniedAction,
     deniedMessage: input.deniedMessage.trim() || null,
     redirectUrl: input.redirectUrl.trim() || null,
@@ -133,6 +148,8 @@ export function toLockInput(lock: LockWithKeys): LockInput {
     enabled: lock.enabled,
     hideFromLists: lock.hideFromLists,
     hideNavLinks: lock.hideNavLinks,
+    protect: lock.protect as ProtectMode,
+    seoHidden: lock.seoHidden,
     deniedAction: lock.deniedAction as DeniedAction,
     deniedMessage: lock.deniedMessage ?? "",
     redirectUrl: lock.redirectUrl ?? "",

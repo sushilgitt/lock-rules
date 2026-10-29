@@ -1,0 +1,155 @@
+{%- doc -%}
+  Outputs "1" when the visitor holds a key to `lock`, nothing otherwise.
+  A lock opens when any key passes; a key passes when all its conditions do.
+  Condition codes and value formats come from app/lib/compile.server.ts.
+
+  @param {object} lock - A compiled lock from app.metafields.lockrules.config
+  @param {string} unlocked - Output of lr_unlocked
+
+  @example
+  {% capture open %}{% render 'lr_open', lock: lock, unlocked: unlocked %}{% endcapture %}
+{%- enddoc -%}
+{%- liquid
+  assign c_email = ''
+  assign c_tags = '|'
+  assign c_orders = 0
+  assign bought = ''
+  if customer
+    assign c_email = customer.email | downcase
+    assign c_tags = customer.tags | join: '|' | downcase | prepend: '|' | append: '|'
+    assign c_orders = customer.orders_count | plus: 0
+    assign bought = customer.metafields['$app:lockrules'].purchased.value
+  endif
+  assign v_host = request.host | downcase
+  assign v_country = localization.country.iso_code | downcase
+  assign v_market = localization.market.handle | downcase
+  assign now = 'now' | date: '%s' | plus: 0
+  assign dow = 'now' | date: '%u'
+  assign hm = 'now' | date: '%H%M' | plus: 0
+  assign cart_pids = cart.items | map: 'product_id' | join: '|' | prepend: '|' | append: '|'
+  assign cart_vids = cart.items | map: 'variant_id' | join: '|' | prepend: '|' | append: '|'
+
+  assign open = false
+  for key in lock.keys
+    assign key_ok = true
+    if key.c.size == 0
+      assign key_ok = false
+    endif
+    for c in key.c
+      assign pass = false
+      case c.t
+        when 'always'
+          assign pass = true
+        when 'signed_in'
+          if customer
+            assign pass = true
+          endif
+        when 'tag'
+          for tg in c.v
+            assign needle = '|' | append: tg | append: '|'
+            if c_tags contains needle
+              assign pass = true
+              break
+            endif
+          endfor
+        when 'email_in'
+          if customer and c.v contains c_email
+            assign pass = true
+          endif
+        when 'email_contains'
+          if customer
+            for part in c.v
+              if c_email contains part
+                assign pass = true
+                break
+              endif
+            endfor
+          endif
+        when 'order_count'
+          if customer and c_orders >= c.n
+            assign pass = true
+          endif
+        when 'purchased'
+          if customer and bought != blank
+            for id in c.v
+              if bought contains id
+                assign pass = true
+                break
+              endif
+            endfor
+          endif
+        when 'cart_product', 'cart_variant'
+          assign haystack = cart_pids
+          if c.t == 'cart_variant'
+            assign haystack = cart_vids
+          endif
+          for id in c.v
+            assign needle = '|' | append: id | append: '|'
+            if haystack contains needle
+              assign pass = true
+              break
+            endif
+          endfor
+        when 'cart_subtotal'
+          if cart.items_subtotal_price >= c.n
+            assign pass = true
+          endif
+        when 'date_after'
+          if now >= c.n
+            assign pass = true
+          endif
+        when 'date_before'
+          if now < c.n
+            assign pass = true
+          endif
+        when 'schedule'
+          if c.v contains dow
+            assign f = c.f | plus: 0
+            assign e = c.e | plus: 0
+            if f < e
+              if hm >= f and hm < e
+                assign pass = true
+              endif
+            elsif hm >= f or hm < e
+              assign pass = true
+            endif
+          endif
+        when 'domain'
+          if c.v contains v_host
+            assign pass = true
+          endif
+        when 'country'
+          if c.v contains v_country
+            assign pass = true
+          endif
+        when 'market'
+          if c.v contains v_market
+            assign pass = true
+          endif
+        when 'passcode', 'secret_link', 'confirm', 'ip'
+          assign needle = '|' | append: c.id | append: '|'
+          if unlocked contains needle
+            assign pass = true
+          endif
+      endcase
+      if c.inv
+        if pass
+          assign pass = false
+        else
+          assign pass = true
+        endif
+      endif
+      unless pass
+        assign key_ok = false
+        break
+      endunless
+    endfor
+    if key_ok
+      assign open = true
+      break
+    endif
+  endfor
+  if open
+    echo '1'
+  endif
+-%}

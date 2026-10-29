@@ -45,6 +45,10 @@ model Shop {
   syncError      String?
   // Signs unlock tokens; mirrored to an app-data metafield for Liquid and the checkout function.
   hmacSecret     String?
+  // Payment customization (payment rules function owner) we created for this shop
+  paymentCustomizationId String?
+  // Resource gids we set seo.hidden on, so we only ever remove our own
+  seoHiddenIds   Json      @default("[]")
   locks          Lock[]
   inputLists     InputList[]
   keyUsages      KeyUsage[]
@@ -55,13 +59,16 @@ model Lock {
   shopId          String
   shop            Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
   name            String
-  // product | collection | page | blog | article | store
+  // product | collection | page | blog | article | store | vendor | product_tag | variant
   resourceType    String
   // [{ id: "gid://shopify/Product/1", handle: "x", title: "X" }]
   resources       Json     @default("[]")
   enabled         Boolean  @default(true)
   hideFromLists   Boolean  @default(false)
   hideNavLinks    Boolean  @default(false)
+  // page: hide the whole page | commerce: hide price + add to cart | manual: only app blocks
+  protect         String   @default("page")
+  seoHidden       Boolean  @default(false)
   // message | login | redirect
   deniedAction    String   @default("message")
   deniedMessage   String?

@@ -76,14 +76,126 @@
                     ]
                   }
                 ]
+              },
+              {
+                "id": "l4",
+                "type": "vendor",
+                "ids": [
+                  "acme wholesale"
+                ],
+                "keys": [
+                  {
+                    "c": [
+                      {
+                        "t": "order_count",
+                        "v": [],
+                        "inv": false,
+                        "n": 3
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "l5",
+                "type": "product_tag",
+                "ids": [
+                  "members-only"
+                ],
+                "keys": [
+                  {
+                    "c": [
+                      {
+                        "t": "purchased",
+                        "v": [
+                          "77"
+                        ],
+                        "inv": false
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "l6",
+                "type": "variant",
+                "ids": [
+                  "gid://shopify/ProductVariant/601"
+                ],
+                "keys": [
+                  {
+                    "c": [
+                      {
+                        "t": "cart_subtotal",
+                        "v": [],
+                        "inv": false,
+                        "n": 100
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "l7",
+                "type": "product",
+                "ids": [
+                  "gid://shopify/Product/8"
+                ],
+                "keys": [
+                  {
+                    "c": [
+                      {
+                        "t": "date_after",
+                        "v": [],
+                        "inv": false,
+                        "s": 0
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "l8",
+                "type": "product",
+                "ids": [
+                  "gid://shopify/Product/9"
+                ],
+                "keys": [
+                  {
+                    "c": [
+                      {
+                        "t": "schedule",
+                        "v": [
+                          "4"
+                        ],
+                        "inv": false,
+                        "s": 0,
+                        "o": true
+                      }
+                    ]
+                  }
+                ]
               }
             ]
           }
         }
       },
+      "presentmentCurrencyRate": "1.0",
       "shop": {
         "localTime": {
-          "date": "2026-10-29"
+          "date": "2026-10-29",
+          "d0": false,
+          "d1": false,
+          "d2": false,
+          "d3": false,
+          "d4": false,
+          "d5": false,
+          "d6": false,
+          "d7": false,
+          "w0": false,
+          "w1": false,
+          "w2": false,
+          "w3": false
         }
       },
       "localization": {
@@ -98,14 +210,27 @@
         "tokens": {
           "value": "pc1.1795996800.0000000000000000000000000000000000000000000000000000000000000000"
         },
+        "cost": {
+          "subtotalAmount": {
+            "amount": "10.0"
+          }
+        },
         "buyerIdentity": null,
         "lines": [
           {
             "merchandise": {
               "__typename": "ProductVariant",
+              "id": "gid://shopify/ProductVariant/400",
               "product": {
                 "id": "gid://shopify/Product/4",
                 "title": "Secret Drop",
+                "vendor": "Store",
+                "productTags": [
+                  {
+                    "tag": "members-only",
+                    "hasTag": false
+                  }
+                ],
                 "inCollections": [
                   {
                     "collectionId": "gid://shopify/Collection/9",

@@ -6,20 +6,39 @@ import type {
 import { hmacSha256Hex } from "./hmac";
 
 // Mirrors CheckoutConfig in app/lib/compile.server.ts.
-type Condition = { t: string; v: string[]; inv: boolean; id?: string };
+type Condition = {
+  t: string;
+  v: string[];
+  inv: boolean;
+  id?: string;
+  n?: number;
+  s?: number;
+  o?: boolean;
+};
 type Key = { c: Condition[] };
-type Lock = { id: string; type: "product" | "collection" | "store"; ids: string[]; keys: Key[] };
+type LockType = "product" | "collection" | "store" | "variant" | "vendor" | "product_tag";
+type Lock = { id: string; type: LockType; ids: string[]; keys: Key[] };
 type Config = { locks: Lock[]; message: string; secret?: string };
 
 type Buyer = {
   signedIn: boolean;
   email: string;
   tags: Set<string>;
+  orders: number;
+  purchased: Set<string>;
   country: string;
   market: string;
   // Condition uids unlocked by a valid, unexpired token in the `_lr` cart attribute.
   unlocked: Set<string>;
+  cartProducts: Set<string>;
+  cartVariants: Set<string>;
+  subtotal: number; // store currency
+  weekday: number; // 1 = Monday
+  dateSlots: boolean[]; // shop local time is at/after slot datetime
+  scheduleSlots: boolean[]; // shop local time is within slot window
 };
+
+const legacy = (gid: string) => gid.split("/").pop() ?? gid;
 
 /**
  * Tokens are "<uid>.<exp>.<hmac>" (see app/lib/tokens.server.ts). Functions
@@ -58,6 +77,21 @@ function conditionPasses(c: Condition, buyer: Buyer): boolean {
     case "email_contains":
       pass = buyer.signedIn && c.v.some((part) => buyer.email.includes(part));
       break;
+    case "order_count":
+      pass = buyer.signedIn && buyer.orders >= (c.n ?? 1);
+      break;
+    case "purchased":
+      pass = buyer.signedIn && c.v.some((id) => buyer.purchased.has(id));
+      break;
+    case "cart_product":
+      pass = c.v.some((id) => buyer.cartProducts.has(id));
+      break;
+    case "cart_variant":
+      pass = c.v.some((id) => buyer.cartVariants.has(id));
+      break;
+    case "cart_subtotal":
+      pass = buyer.subtotal >= (c.n ?? 0);
+      break;
     case "country":
       pass = c.v.includes(buyer.country);
       break;
@@ -70,6 +104,18 @@ function conditionPasses(c: Condition, buyer: Buyer): boolean {
     case "ip":
       pass = Boolean(c.id && buyer.unlocked.has(c.id));
       break;
+    case "date_after":
+    case "date_before":
+      // Beyond the checkout's time slots: only the storefront enforces it.
+      if (c.s === undefined) return true;
+      pass = c.t === "date_after" ? buyer.dateSlots[c.s] : !buyer.dateSlots[c.s];
+      break;
+    case "schedule": {
+      if (c.s === undefined) return true;
+      const inWindow = c.o ? !buyer.scheduleSlots[c.s] : buyer.scheduleSlots[c.s];
+      pass = c.v.includes(String(buyer.weekday)) && inWindow;
+      break;
+    }
     case "domain":
       // The storefront domain isn't known at checkout; don't let it block a purchase.
       return true;
@@ -91,19 +137,30 @@ export function cartValidationsGenerateRun(
 
   if (config?.locks?.length) {
     const customer = input.cart.buyerIdentity?.customer;
+    const time = input.shop.localTime;
+    const variants = input.cart.lines.flatMap((l) =>
+      l.merchandise.__typename === "ProductVariant" ? [l.merchandise] : [],
+    );
+    const rate = Number(input.presentmentCurrencyRate) || 1;
+    const purchased = customer?.purchased?.jsonValue;
+
     const buyer: Buyer = {
       signedIn: Boolean(customer),
       email: (customer?.email ?? "").toLowerCase(),
       tags: new Set(
         (customer?.hasTags ?? []).filter((t) => t.hasTag).map((t) => t.tag.toLowerCase()),
       ),
+      orders: customer?.numberOfOrders ?? 0,
+      purchased: new Set(Array.isArray(purchased) ? purchased.map(String) : []),
       country: String(input.localization.country.isoCode).toLowerCase(),
       market: (input.localization.market?.handle ?? "").toLowerCase(),
-      unlocked: unlockedConditions(
-        input.cart.tokens?.value,
-        config.secret ?? "",
-        input.shop.localTime.date,
-      ),
+      unlocked: unlockedConditions(input.cart.tokens?.value, config.secret ?? "", time.date),
+      cartProducts: new Set(variants.map((v) => legacy(v.product.id))),
+      cartVariants: new Set(variants.map((v) => legacy(v.id))),
+      subtotal: Number(input.cart.cost.subtotalAmount.amount) / rate,
+      weekday: ((new Date(`${time.date}T12:00:00Z`).getUTCDay() + 6) % 7) + 1,
+      dateSlots: [time.d0, time.d1, time.d2, time.d3, time.d4, time.d5, time.d6, time.d7],
+      scheduleSlots: [time.w0, time.w1, time.w2, time.w3],
     };
 
     const openCache = new Map<string, boolean>();
@@ -113,24 +170,45 @@ export function cartValidationsGenerateRun(
     };
 
     const reported = new Set<string>();
-    for (const line of input.cart.lines) {
-      if (line.merchandise.__typename !== "ProductVariant") continue;
-      const product = line.merchandise.product;
-      if (reported.has(product.id)) continue;
+    for (const variant of variants) {
+      const product = variant.product;
+      if (reported.has(variant.id)) continue;
 
       const memberOf = new Set(
         product.inCollections.filter((m) => m.isMember).map((m) => m.collectionId),
       );
+      const productTags = new Set(
+        product.productTags.filter((t) => t.hasTag).map((t) => t.tag.toLowerCase()),
+      );
+      const vendor = (product.vendor ?? "").toLowerCase();
+
       const denied = config.locks.some((lock) => {
-        const applies =
-          lock.type === "store" ||
-          (lock.type === "product" && lock.ids.includes(product.id)) ||
-          (lock.type === "collection" && lock.ids.some((id) => memberOf.has(id)));
+        let applies = false;
+        switch (lock.type) {
+          case "store":
+            applies = true;
+            break;
+          case "product":
+            applies = lock.ids.includes(product.id);
+            break;
+          case "variant":
+            applies = lock.ids.includes(variant.id);
+            break;
+          case "collection":
+            applies = lock.ids.some((id) => memberOf.has(id));
+            break;
+          case "vendor":
+            applies = lock.ids.includes(vendor);
+            break;
+          case "product_tag":
+            applies = lock.ids.some((t) => productTags.has(t));
+            break;
+        }
         return applies && !isOpen(lock);
       });
 
       if (denied) {
-        reported.add(product.id);
+        reported.add(variant.id);
         errors.push({
           message: (config.message || "{title} isn't available for your account.").replace(
             "{title}",

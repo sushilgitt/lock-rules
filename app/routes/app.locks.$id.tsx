@@ -22,7 +22,10 @@ import { listInputLists } from "../models/inputList.server";
 import {
   CONDITION_TYPES,
   DENIED_ACTIONS,
+  NAMED_RESOURCE_TYPES,
+  PROTECT_MODES,
   RESOURCE_TYPES,
+  WEEKDAYS,
   STORE_EXCEPTIONS,
   conditionMeta,
   conditionNeedsValues,
@@ -35,6 +38,7 @@ import {
   type ConditionType,
   type LockInput,
   type LockResource,
+  type ProtectMode,
   type ResourceType,
 } from "../lib/locks";
 
@@ -67,6 +71,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   return {
     isNew: params.id === "new",
+    lockId: params.id === "new" ? null : params.id!,
     lock,
     storeUrl: (data?.shop?.primaryDomain?.url as string | undefined) ?? `https://${session.shop}`,
     inputLists: (await listInputLists(shop.id)) as InputListOption[],
@@ -116,6 +121,7 @@ function ConditionRow({
   onRemove: () => void;
 }) {
   const meta = conditionMeta(condition.type);
+  const shopify = useAppBridge();
   // Keep the raw text while typing so commas and newlines aren't swallowed.
   const [raw, setRaw] = useState(condition.values.join(", "));
   const lists = meta?.lists ? inputLists.filter((l) => l.kind === meta.lists) : [];
@@ -169,6 +175,110 @@ function ConditionRow({
         )}
         {!conditionNeedsValues(condition.type) && meta?.help && (
           <s-paragraph color="subdued">{meta.help}</s-paragraph>
+        )}
+
+        {(meta?.input === "products" || meta?.input === "variants") && (
+          <s-stack gap="small-200">
+            <s-stack direction="inline" gap="small-200">
+              {(condition.titles ?? condition.values).map((t, i) => (
+                <s-chip key={condition.values[i] ?? t}>{t}</s-chip>
+              ))}
+            </s-stack>
+            <s-stack direction="inline">
+              <s-button
+                onClick={async () => {
+                  const selected = await shopify.resourcePicker({
+                    type: meta.input === "variants" ? "variant" : "product",
+                    multiple: true,
+                    action: "select",
+                    selectionIds: condition.values.map((id) => ({ id })),
+                  });
+                  if (selected) {
+                    onChange({
+                      ...condition,
+                      values: selected.map((r: any) => r.id),
+                      titles: selected.map((r: any) =>
+                        r.product?.title ? `${r.product.title} - ${r.title}` : r.title,
+                      ),
+                    });
+                  }
+                }}
+              >
+                {condition.values.length ? "Change selection" : meta.input === "variants" ? "Select variants" : "Select products"}
+              </s-button>
+            </s-stack>
+          </s-stack>
+        )}
+
+        {(meta?.input === "amount" || meta?.input === "number") && (
+          <s-number-field
+            label={meta.input === "amount" ? "Amount" : "Orders"}
+            min={0}
+            step={meta.input === "amount" ? 0.01 : 1}
+            value={String(condition.amount ?? 0)}
+            onInput={(e) =>
+              onChange({ ...condition, amount: Math.max(0, Number(e.currentTarget.value) || 0) })
+            }
+          />
+        )}
+
+        {meta?.input === "datetime" && (
+          <s-grid gridTemplateColumns="1fr 1fr" gap="base">
+            <s-date-field
+              label="Date"
+              value={(condition.at ?? "").slice(0, 10)}
+              onChange={(e) =>
+                onChange({
+                  ...condition,
+                  at: `${e.currentTarget.value}T${(condition.at ?? "").slice(11, 16) || "00:00"}`,
+                })
+              }
+            />
+            <s-text-field
+              label="Time (24h)"
+              placeholder="09:00"
+              value={(condition.at ?? "").slice(11, 16)}
+              onInput={(e) =>
+                onChange({
+                  ...condition,
+                  at: `${(condition.at ?? "").slice(0, 10)}T${e.currentTarget.value}`,
+                })
+              }
+            />
+          </s-grid>
+        )}
+
+        {meta?.input === "schedule" && (
+          <s-stack gap="small-200">
+            <s-choice-list
+              label="Days"
+              multiple
+              values={(condition.days ?? []).map(String)}
+              onChange={(e) =>
+                onChange({ ...condition, days: [...e.currentTarget.values].map(Number).sort() })
+              }
+            >
+              {WEEKDAYS.map((d) => (
+                <s-choice key={d.value} value={String(d.value)}>
+                  {d.label}
+                </s-choice>
+              ))}
+            </s-choice-list>
+            <s-grid gridTemplateColumns="1fr 1fr" gap="base">
+              <s-text-field
+                label="From (24h)"
+                placeholder="09:00"
+                value={condition.from ?? ""}
+                onInput={(e) => onChange({ ...condition, from: e.currentTarget.value })}
+              />
+              <s-text-field
+                label="Until (24h)"
+                placeholder="17:00"
+                value={condition.to ?? ""}
+                onInput={(e) => onChange({ ...condition, to: e.currentTarget.value })}
+              />
+            </s-grid>
+          </s-stack>
         )}
 
         {meta?.lists && (
@@ -240,7 +350,8 @@ function ConditionRow({
 }
 
 export default function LockEditor() {
-  const { isNew, lock: initial, content, inputLists, storeUrl } = useLoaderData<typeof loader>();
+  const { isNew, lockId, lock: initial, content, inputLists, storeUrl } =
+    useLoaderData<typeof loader>();
   const [lock, setLock] = useState<LockInput>(initial);
   const fetcher = useFetcher<typeof action>();
   const shopify = useAppBridge();
@@ -271,7 +382,7 @@ export default function LockEditor() {
   };
 
   const pickResources = async () => {
-    const type = lock.resourceType as "product" | "collection";
+    const type = lock.resourceType as "product" | "collection" | "variant";
     const selected = await shopify.resourcePicker({
       type,
       multiple: true,
@@ -281,9 +392,23 @@ export default function LockEditor() {
     if (selected) {
       set(
         "resources",
-        selected.map((r: any) => ({ id: r.id, handle: r.handle, title: r.title })),
+        selected.map((r: any) => ({
+          id: r.id,
+          handle: r.handle ?? r.product?.handle ?? "",
+          title: r.product?.title ? `${r.product.title} - ${r.title}` : r.title,
+        })),
       );
     }
+  };
+
+  // Vendor and product tag locks name their targets instead of picking them.
+  const [namedRaw, setNamedRaw] = useState(initial.resources.map((r) => r.title).join(", "));
+  const setNamed = (raw: string) => {
+    setNamedRaw(raw);
+    set(
+      "resources",
+      splitList(raw).map((name) => ({ id: name.toLowerCase(), handle: "", title: name })),
+    );
   };
 
   const updateKey = (k: number, conditions: ConditionInput[]) =>
@@ -292,7 +417,8 @@ export default function LockEditor() {
       lock.keys.map((key, i) => (i === k ? { conditions } : key)),
     );
 
-  const usesPicker = lock.resourceType === "product" || lock.resourceType === "collection";
+  const usesPicker = ["product", "collection", "variant"].includes(lock.resourceType);
+  const named = NAMED_RESOURCE_TYPES.includes(lock.resourceType);
   const contentOptions =
     lock.resourceType === "page" || lock.resourceType === "blog" || lock.resourceType === "article"
       ? content[lock.resourceType]
@@ -333,13 +459,14 @@ export default function LockEditor() {
           <s-select
             label="Lock type"
             value={lock.resourceType}
-            onChange={(e) =>
+            onChange={(e) => {
+              setNamedRaw("");
               setLock((l) => ({
                 ...l,
                 resourceType: e.currentTarget.value as ResourceType,
                 resources: [],
-              }))
-            }
+              }));
+            }}
           >
             {RESOURCE_TYPES.map((r) => (
               <s-option key={r.value} value={r.value}>
@@ -365,7 +492,24 @@ export default function LockEditor() {
                   Products in a locked collection are locked too.
                 </s-paragraph>
               )}
+              {lock.resourceType === "variant" && (
+                <s-paragraph color="subdued">
+                  Locked variants disappear from the variant picker and can&apos;t be bought.
+                  Lock a wholesale variant for retail shoppers (and the retail variant for
+                  wholesale, with an inverted key) to run price tiers.
+                </s-paragraph>
+              )}
             </s-stack>
+          )}
+
+          {named && (
+            <s-text-area
+              label={lock.resourceType === "vendor" ? "Vendors" : "Product tags"}
+              rows={2}
+              value={namedRaw}
+              details="Comma-separated. Matches products with any of these, including products added later."
+              onInput={(e) => setNamed(e.currentTarget.value)}
+            />
           )}
 
           {contentOptions.length > 0 && (
@@ -388,7 +532,7 @@ export default function LockEditor() {
               ))}
             </s-choice-list>
           )}
-          {!usesPicker && lock.resourceType !== "store" && contentOptions.length === 0 && (
+          {!usesPicker && !named && lock.resourceType !== "store" && contentOptions.length === 0 && (
             <s-paragraph color="subdued">Nothing to choose yet. Create some first.</s-paragraph>
           )}
 
@@ -516,7 +660,34 @@ export default function LockEditor() {
         </s-stack>
       </s-section>
 
-      {lock.resourceType !== "store" && (
+      {lock.resourceType !== "variant" && (
+        <s-section slot="aside" heading="Protect">
+          <s-stack gap="small-200">
+            <s-select
+              label="For visitors without a key"
+              value={lock.protect}
+              onChange={(e) => set("protect", e.currentTarget.value as ProtectMode)}
+            >
+              {PROTECT_MODES.map((m) => (
+                <s-option key={m.value} value={m.value}>
+                  {m.label}
+                </s-option>
+              ))}
+            </s-select>
+            {lock.protect === "manual" && (
+              <s-stack gap="small-200">
+                <s-paragraph color="subdued">
+                  Add the Protected price, Protected add to cart or Protected content blocks
+                  in your theme editor. For Protected content, use this lock ID:
+                </s-paragraph>
+                <s-text-field label="Lock ID" value={lockId ?? "Save the lock first"} readOnly />
+              </s-stack>
+            )}
+          </s-stack>
+        </s-section>
+      )}
+
+      {!["store", "variant", "vendor", "product_tag"].includes(lock.resourceType) && (
         <s-section slot="aside" heading="Visibility">
           <s-stack gap="small-200">
             <s-checkbox
@@ -529,8 +700,16 @@ export default function LockEditor() {
               checked={lock.hideNavLinks}
               onChange={(e) => set("hideNavLinks", e.currentTarget.checked)}
             />
+            {["product", "collection", "page", "article"].includes(lock.resourceType) && (
+              <s-checkbox
+                label="Hide from search engines"
+                details="Adds noindex and removes the pages from your sitemap and store search."
+                checked={lock.seoHidden}
+                onChange={(e) => set("seoHidden", e.currentTarget.checked)}
+              />
+            )}
             <s-paragraph color="subdued">
-              Hidden for visitors who don't have a key.
+              Hidden for visitors who don&apos;t have a key.
             </s-paragraph>
           </s-stack>
         </s-section>

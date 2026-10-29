@@ -1,9 +1,19 @@
 import type { AdminApiContext } from "@shopify/shopify-app-react-router/server";
 import prisma from "../db.server";
 import { listLocks, readParams, type LockWithKeys } from "../models/lock.server";
-import { legacyId, REMOTE_CONDITIONS, type ConditionType, type LockResource } from "./locks";
+import {
+  legacyId,
+  NAMED_RESOURCE_TYPES,
+  REMOTE_CONDITIONS,
+  type ConditionType,
+  type LockResource,
+  type ResourceType,
+} from "./locks";
 import { getSettings, type Messages } from "./settings";
 import { newSecret } from "./tokens.server";
+import { localToEpoch } from "./time";
+import { syncSeo } from "./seo.server";
+import { syncPaymentRules } from "./payments.server";
 
 /*
  * The compiler turns the locks stored in our database into two JSON documents:
@@ -35,7 +45,28 @@ const MAX_FUNCTION_LIST = 100;
 // JSON metafields are capped at 128KB; leave headroom.
 const MAX_CONFIG_BYTES = 120_000;
 
-type CompiledCondition = { t: string; v: string[]; inv: boolean; id?: string; p?: string };
+// Fixed input-query slots the checkout function uses for time conditions
+// (shop.localTime.dateTimeAfter / timeBetween need literal arguments).
+export const DATE_SLOTS = 8;
+export const SCHEDULE_SLOTS = 4;
+
+// n: number (storefront: cents / order count / epoch; checkout: amount / order count)
+// f/e: schedule window "HHMM" (storefront) or "HH:MM:00" (checkout)
+// at: checkout local datetime; s: checkout time slot
+type CompiledCondition = {
+  t: string;
+  v: string[];
+  inv: boolean;
+  id?: string;
+  p?: string;
+  n?: number;
+  f?: string;
+  e?: string;
+  at?: string;
+  s?: number;
+  // checkout schedule that wraps past midnight: slot holds the reversed window
+  o?: boolean;
+};
 type CompiledKey = { c: CompiledCondition[] };
 
 export interface StorefrontLock {
@@ -50,6 +81,7 @@ export interface StorefrontLock {
   msg: string;
   url: string;
   ex: string[];
+  pm: string;
 }
 
 export interface StorefrontConfig {
@@ -59,10 +91,12 @@ export interface StorefrontConfig {
   msgs: Record<string, Partial<Messages>>;
 }
 
+export const CHECKOUT_TYPES = ["product", "collection", "store", "variant", "vendor", "product_tag"] as const;
+
 export interface CheckoutLock {
   id: string;
-  type: "product" | "collection" | "store";
-  ids: string[]; // gids
+  type: (typeof CHECKOUT_TYPES)[number];
+  ids: string[]; // gids, or lowercased names for vendor / product_tag
   keys: CompiledKey[];
 }
 
@@ -74,17 +108,50 @@ export interface CheckoutConfig {
 
 export type ListEntries = Map<string, { v: string; r?: string }[]>;
 
-function compileKeys(lock: LockWithKeys, lists: ListEntries): CompiledKey[] {
+type Target = "storefront" | "checkout";
+
+function compileKeys(
+  lock: LockWithKeys,
+  lists: ListEntries,
+  timeZone: string,
+  target: Target,
+): CompiledKey[] {
   return lock.keys.map((key) => ({
     c: key.conditions.map((c) => {
       const type = c.type as ConditionType;
       const params = readParams(c.params);
       const compiled: CompiledCondition = { t: type, v: [], inv: c.inverted };
+      const hhmm = (t?: string) => (target === "checkout" ? `${t}:00` : (t ?? "").replace(":", ""));
 
       if (REMOTE_CONDITIONS.includes(type)) {
         compiled.id = params.uid;
-        if (type === "confirm" && params.prompt) compiled.p = params.prompt;
+        if (type === "confirm" && params.prompt && target === "storefront") compiled.p = params.prompt;
         return compiled;
+      }
+
+      switch (type) {
+        case "cart_product":
+        case "purchased":
+        case "cart_variant":
+          compiled.v = params.values.map(legacyId);
+          return compiled;
+        case "order_count":
+          compiled.n = Math.max(0, Math.floor(params.amount ?? 1));
+          return compiled;
+        case "cart_subtotal":
+          compiled.n =
+            target === "checkout" ? (params.amount ?? 0) : Math.round((params.amount ?? 0) * 100);
+          return compiled;
+        case "date_after":
+        case "date_before":
+          if (target === "checkout") compiled.at = `${params.at}:00`;
+          else compiled.n = localToEpoch(params.at ?? "", timeZone) ?? 0;
+          return compiled;
+        case "schedule":
+          compiled.v = (params.days ?? []).map(String);
+          compiled.f = hhmm(params.from);
+          compiled.e = hhmm(params.to);
+          return compiled;
       }
 
       let values = params.values;
@@ -98,11 +165,20 @@ function compileKeys(lock: LockWithKeys, lists: ListEntries): CompiledKey[] {
   }));
 }
 
+function lockIds(lock: LockWithKeys, target: Target) {
+  const resources = (lock.resources ?? []) as unknown as LockResource[];
+  if (NAMED_RESOURCE_TYPES.includes(lock.resourceType as ResourceType)) {
+    return resources.map((r) => r.title.trim().toLowerCase());
+  }
+  return resources.map((r) => (target === "checkout" ? r.id : legacyId(r.id)));
+}
+
 export function compile(
   locks: LockWithKeys[],
   settings: ReturnType<typeof getSettings>,
   lists: ListEntries,
   secret: string,
+  timeZone = "UTC",
 ) {
   const enabled = locks.filter((l) => l.enabled);
 
@@ -115,38 +191,71 @@ export function compile(
       return {
         id: lock.id,
         type: lock.resourceType,
-        ids: resources.map((r) => legacyId(r.id)),
-        handles: resources.map((r) => r.handle),
-        keys: compileKeys(lock, lists),
+        ids: lockIds(lock, "storefront"),
+        // Only handle-addressable types can be hidden from lists and menus.
+        handles: ["product", "collection", "page", "blog"].includes(lock.resourceType)
+          ? resources.map((r) => r.handle)
+          : [],
+        keys: compileKeys(lock, lists, timeZone, "storefront"),
         hide: lock.hideFromLists,
         nav: lock.hideNavLinks,
         act: lock.deniedAction,
         msg: lock.deniedMessage ?? "",
         url: lock.redirectUrl ?? "",
         ex: (lock.storeExceptions ?? []) as string[],
+        pm: lock.protect,
       };
     }),
   };
 
   const checkoutLocks: CheckoutLock[] = enabled
-    .filter((l) => ["product", "collection", "store"].includes(l.resourceType))
+    .filter((l) => (CHECKOUT_TYPES as readonly string[]).includes(l.resourceType))
     .map((lock) => ({
       id: lock.id,
       type: lock.resourceType as CheckoutLock["type"],
-      ids: ((lock.resources ?? []) as unknown as LockResource[]).map((r) => r.id),
-      keys: compileKeys(lock, lists).map((k) => ({ c: k.c.map(({ p: _p, ...c }) => c) })),
+      ids: lockIds(lock, "checkout"),
+      keys: compileKeys(lock, lists, timeZone, "checkout"),
     }));
 
   const tags = new Set<string>();
+  const productTags = new Set<string>();
   const collectionIds = new Set<string>();
+  const dateSlots: string[] = [];
+  const scheduleSlots: { f: string; e: string }[] = [];
+  let slotsFull = false;
   for (const lock of checkoutLocks) {
     if (lock.type === "collection") lock.ids.forEach((id) => collectionIds.add(id));
+    if (lock.type === "product_tag") lock.ids.forEach((t) => productTags.add(t));
     for (const key of lock.keys) {
-      for (const c of key.c) if (c.t === "tag") c.v.forEach((t) => tags.add(t));
+      for (const c of key.c) {
+        if (c.t === "tag") c.v.forEach((t) => tags.add(t));
+        if ((c.t === "date_after" || c.t === "date_before") && c.at) {
+          let slot = dateSlots.indexOf(c.at);
+          if (slot < 0 && dateSlots.length < DATE_SLOTS) slot = dateSlots.push(c.at) - 1;
+          if (slot >= 0) c.s = slot;
+          else slotsFull = true;
+        }
+        if (c.t === "schedule" && c.f && c.e) {
+          // timeBetween needs start < end, so overnight windows are stored reversed.
+          const w = c.f > c.e ? { f: c.e, e: c.f } : { f: c.f, e: c.e };
+          if (c.f > c.e) c.o = true;
+          let slot = scheduleSlots.findIndex((x) => x.f === w.f && x.e === w.e);
+          if (slot < 0 && scheduleSlots.length < SCHEDULE_SLOTS) {
+            slot = scheduleSlots.push(w) - 1;
+          }
+          if (slot >= 0) c.s = slot;
+          else slotsFull = true;
+        }
+      }
     }
   }
 
   const warnings: string[] = [];
+  if (slotsFull) {
+    warnings.push(
+      `Checkout checks up to ${DATE_SLOTS} different dates and ${SCHEDULE_SLOTS} schedule windows. Extra time conditions only apply on the storefront.`,
+    );
+  }
   if (tags.size > MAX_FUNCTION_LIST) {
     warnings.push(`Checkout protection only checks the first ${MAX_FUNCTION_LIST} customer tags.`);
   }
@@ -165,29 +274,37 @@ export function compile(
     checkout: { locks: checkoutLocks, message: settings.messages.checkout, secret } as CheckoutConfig,
     vars: {
       tags: [...tags].slice(0, MAX_FUNCTION_LIST),
+      productTags: [...productTags].slice(0, MAX_FUNCTION_LIST),
       collectionIds: [...collectionIds].slice(0, MAX_FUNCTION_LIST),
+      ...Object.fromEntries(dateSlots.map((at, i) => [`d${i}`, at])),
+      ...Object.fromEntries(
+        scheduleSlots.flatMap((w, i) => [
+          [`w${i}s`, w.f],
+          [`w${i}e`, w.e],
+        ]),
+      ),
     },
     warnings,
     tooLarge: size > MAX_CONFIG_BYTES,
   };
 }
 
-type GraphQL = AdminApiContext["graphql"];
+export type GraphQL = AdminApiContext["graphql"];
 
-async function gql<T = any>(graphql: GraphQL, query: string, variables?: Record<string, unknown>) {
+export async function gql<T = any>(graphql: GraphQL, query: string, variables?: Record<string, unknown>) {
   const res = await graphql(query, { variables });
   const json = (await res.json()) as { data?: T; errors?: unknown };
   if (json.errors) throw new Error(JSON.stringify(json.errors));
   return json.data as T;
 }
 
-function userErrors(errors: { message: string }[] | undefined, what: string) {
+export function userErrors(errors: { message: string }[] | undefined, what: string) {
   if (errors?.length) throw new Error(`${what}: ${errors.map((e) => e.message).join("; ")}`);
 }
 
-type MetafieldInput = { ownerId?: string; namespace: string; key: string; value: string; type?: string };
+export type MetafieldInput = { ownerId?: string; namespace: string; key: string; value: string; type?: string };
 
-async function setMetafields(graphql: GraphQL, metafields: MetafieldInput[]) {
+export async function setMetafields(graphql: GraphQL, metafields: MetafieldInput[]) {
   const data = await gql(
     graphql,
     `#graphql
@@ -256,13 +373,24 @@ export async function syncShop(graphql: GraphQL, domain: string) {
   }
   const secret = shop.hmacSecret!;
   const [locks, lists] = await Promise.all([listLocks(shop.id), loadListEntries(shop.id)]);
+  const settings = getSettings(shop.settings);
+  const problems: string[] = [];
+  let timeZone = "UTC";
+  try {
+    const data = await gql(graphql, `#graphql
+      query LockRulesShopTimezone { shop { ianaTimezone } }`);
+    timeZone = data.shop.ianaTimezone || "UTC";
+  } catch (e) {
+    problems.push(e instanceof Error ? e.message : String(e));
+  }
   const { storefront, checkout, vars, warnings, tooLarge } = compile(
     locks,
-    getSettings(shop.settings),
+    settings,
     lists,
     secret,
+    timeZone,
   );
-  const problems: string[] = [...warnings];
+  problems.push(...warnings);
 
   if (!tooLarge) {
     try {
@@ -283,6 +411,17 @@ export async function syncShop(graphql: GraphQL, domain: string) {
     await syncValidation(graphql, shop, checkout, vars);
   } catch (e) {
     problems.push(e instanceof Error ? e.message : String(e));
+  }
+
+  for (const step of [
+    () => syncSeo(graphql, shop, locks),
+    () => syncPaymentRules(graphql, shop, settings.paymentRules),
+  ]) {
+    try {
+      await step();
+    } catch (e) {
+      problems.push(e instanceof Error ? e.message : String(e));
+    }
   }
 
   const syncError = problems.length ? problems.join("\n") : null;

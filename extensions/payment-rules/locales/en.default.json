@@ -1,0 +1,4 @@
+{
+  "name": "LockRules payment rules",
+  "description": "Hides payment methods based on customer tags."
+}

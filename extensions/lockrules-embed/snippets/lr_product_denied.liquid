@@ -1,0 +1,61 @@
+{%- doc -%}
+  Outputs the id of the first lock that applies to `product` and stays closed for
+  this visitor, or nothing when every applicable lock is open. Considers locks in
+  every protect mode, so app blocks work for page, commerce and manual locks.
+
+  @param {product} product - The product to check
+
+  @example
+  {% capture denied %}{% render 'lr_product_denied', product: product %}{% endcapture %}
+{%- enddoc -%}
+{%- liquid
+  assign cfg = app.metafields.lockrules.config.value
+  capture unlocked
+    render 'lr_unlocked'
+  endcapture
+  assign pid = product.id | append: ''
+  assign vendor = product.vendor | downcase
+  assign ptags = product.tags | join: '|' | downcase | prepend: '|' | append: '|'
+  assign col_ids = '|'
+  for col in product.collections
+    assign col_ids = col_ids | append: col.id | append: '|'
+  endfor
+
+  for lock in cfg.locks
+    assign applies = false
+    case lock.type
+      when 'store'
+        assign applies = true
+      when 'product'
+        if lock.ids contains pid
+          assign applies = true
+        endif
+      when 'vendor'
+        if lock.ids contains vendor
+          assign applies = true
+        endif
+      when 'collection', 'product_tag'
+        assign haystack = col_ids
+        if lock.type == 'product_tag'
+          assign haystack = ptags
+        endif
+        for lid in lock.ids
+          assign needle = '|' | append: lid | append: '|'
+          if haystack contains needle
+            assign applies = true
+            break
+          endif
+        endfor
+    endcase
+    unless applies
+      continue
+    endunless
+    capture open
+      render 'lr_open', lock: lock, unlocked: unlocked
+    endcapture
+    if open == blank
+      echo lock.id
+      break
+    endif
+  endfor
+-%}

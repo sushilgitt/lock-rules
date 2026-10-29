@@ -4,56 +4,37 @@
   Reads the compiled config written by app/lib/compile.server.ts to the app-data
   metafield `app.metafields.lockrules.config`, decides whether the current page
   is locked for this visitor, and hands the result to assets/lockrules.js.
+  Key checks live in snippets/lr_open.liquid (shared with the app blocks).
 
-  Lock: any key opens it (OR). Key: every condition must pass (AND).
-  Local conditions: signed_in | tag | email_in | email_contains | domain | country | market | always.
-  Remote conditions (passcode | secret_link | confirm | ip) pass when the `_lr` cart
-  attribute holds a token "<uid>.<exp>.<hmac>" signed with app.metafields.lockrules.secret
-  (see app/lib/tokens.server.ts). Values are stored lowercase.
+  Protect modes (lock.pm):
+    page     - hide the page's main content
+    commerce - keep the page, hide price and add to cart
+    manual   - nothing automatic; only the LockRules app blocks react
+  Variant locks never hide a page; they remove the variant from the picker.
 {%- endcomment -%}
 {%- liquid
   assign cfg = app.metafields.lockrules.config.value
-  assign secret = app.metafields.lockrules.secret.value
+  capture unlocked
+    render 'lr_unlocked'
+  endcapture
   assign lr_denied = false
+  assign lr_commerce = false
   assign lr_idx = -1
   assign lr_act = ''
   assign lr_hide = ''
   assign lr_nav = ''
-
-  assign c_email = ''
-  assign c_tags = '|'
-  if customer
-    assign c_email = customer.email | downcase
-    assign c_tags = customer.tags | join: '|' | downcase | prepend: '|' | append: '|'
-  endif
-  assign v_host = request.host | downcase
-  assign v_country = localization.country.iso_code | downcase
-  assign v_market = localization.market.handle | downcase
-
-  assign unlocked = '|'
-  if secret != blank and cart.attributes._lr != blank
-    assign now = 'now' | date: '%s' | plus: 0
-    assign tokens = cart.attributes._lr | split: ' '
-    for token in tokens
-      assign parts = token | split: '.'
-      if parts.size == 3
-        assign exp = parts[1] | plus: 0
-        if exp > now
-          assign expected = parts[0] | append: '.' | append: parts[1] | hmac_sha256: secret
-          if expected == parts[2]
-            assign unlocked = unlocked | append: parts[0] | append: '|'
-          endif
-        endif
-      endif
-    endfor
-  endif
+  assign lr_variants = ''
 
   assign tpl = template.name
   assign rid = ''
   assign col_ids = '|'
+  assign p_vendor = ''
+  assign p_tags = '|'
   case tpl
     when 'product'
       assign rid = product.id | append: ''
+      assign p_vendor = product.vendor | downcase
+      assign p_tags = product.tags | join: '|' | downcase | prepend: '|' | append: '|'
       for col in product.collections
         assign col_ids = col_ids | append: col.id | append: '|'
       endfor
@@ -88,13 +69,31 @@
         if tpl == 'product' and lock.ids contains rid
           assign applies = true
         endif
-      when 'collection'
-        if tpl == 'collection' and lock.ids contains rid
+      when 'vendor'
+        if tpl == 'product' and lock.ids contains p_vendor
+          assign applies = true
+        endif
+      when 'collection', 'product_tag'
+        if tpl == 'collection' and lock.type == 'collection' and lock.ids contains rid
           assign applies = true
         elsif tpl == 'product'
+          assign haystack = col_ids
+          if lock.type == 'product_tag'
+            assign haystack = p_tags
+          endif
           for lid in lock.ids
             assign needle = '|' | append: lid | append: '|'
-            if col_ids contains needle
+            if haystack contains needle
+              assign applies = true
+              break
+            endif
+          endfor
+        endif
+      when 'variant'
+        if tpl == 'product'
+          for v in product.variants
+            assign vid = v.id | append: ''
+            if lock.ids contains vid
               assign applies = true
               break
             endif
@@ -116,85 +115,27 @@
       continue
     endunless
 
-    assign open = false
-    for key in lock.keys
-      assign key_ok = true
-      if key.c.size == 0
-        assign key_ok = false
-      endif
-      for c in key.c
-        assign pass = false
-        case c.t
-          when 'always'
-            assign pass = true
-          when 'signed_in'
-            if customer
-              assign pass = true
-            endif
-          when 'tag'
-            for tg in c.v
-              assign needle = '|' | append: tg | append: '|'
-              if c_tags contains needle
-                assign pass = true
-                break
-              endif
-            endfor
-          when 'email_in'
-            if customer and c.v contains c_email
-              assign pass = true
-            endif
-          when 'email_contains'
-            if customer
-              for part in c.v
-                if c_email contains part
-                  assign pass = true
-                  break
-                endif
-              endfor
-            endif
-          when 'domain'
-            if c.v contains v_host
-              assign pass = true
-            endif
-          when 'country'
-            if c.v contains v_country
-              assign pass = true
-            endif
-          when 'market'
-            if c.v contains v_market
-              assign pass = true
-            endif
-          when 'passcode', 'secret_link', 'confirm', 'ip'
-            assign needle = '|' | append: c.id | append: '|'
-            if unlocked contains needle
-              assign pass = true
-            endif
-        endcase
-        if c.inv
-          if pass
-            assign pass = false
-          else
-            assign pass = true
-          endif
-        endif
-        unless pass
-          assign key_ok = false
-          break
-        endunless
-      endfor
-      if key_ok
-        assign open = true
-        break
-      endif
-    endfor
-
-    if open
+    capture open
+      render 'lr_open', lock: lock, unlocked: unlocked
+    endcapture
+    if open != blank
       continue
     endif
 
-    if applies and lr_denied == false
-      assign lr_denied = true
-      assign lr_idx = forloop.index0
+    if applies
+      if lock.type == 'variant'
+        for vid in lock.ids
+          assign lr_variants = lr_variants | append: vid | append: ','
+        endfor
+      elsif lock.pm == 'commerce'
+        if lr_commerce == false and lr_denied == false
+          assign lr_idx = forloop.index0
+        endif
+        assign lr_commerce = true
+      elsif lock.pm != 'manual' and lr_denied == false
+        assign lr_denied = true
+        assign lr_idx = forloop.index0
+      endif
     endif
 
     if lock.type == 'product' or lock.type == 'collection' or lock.type == 'page' or lock.type == 'blog'
@@ -213,7 +154,7 @@
   assign lr_msg = ''
   assign lr_url = ''
   assign remote_js = ''
-  if lr_denied
+  if lr_idx >= 0
     assign dl = cfg.locks[lr_idx]
     assign lr_act = dl.act
     assign lr_msg = dl.msg
@@ -222,6 +163,10 @@
       assign lr_act = 'message'
     endif
     if lr_act == 'login' and customer
+      assign lr_act = 'message'
+    endif
+    if lr_commerce and lr_denied == false and lr_act == 'redirect'
+      # A commerce lock keeps the page, so it never redirects.
       assign lr_act = 'message'
     endif
 
@@ -267,11 +212,18 @@
     main, #MainContent, [role='main'] { visibility: hidden !important; }
     .lockrules-denied { visibility: visible !important; }
   </style>
+{%- elsif lr_commerce -%}
+  <style>
+    .product__info-container .price, .product .price, .product-single__price, [data-product-price],
+    product-form, .product-form, form[action$='/cart/add'] [type='submit'], .shopify-payment-button,
+    .product-form__quantity, quantity-input { display: none !important; }
+  </style>
 {%- endif -%}
-{%- if lr_denied or lr_hide != blank or lr_nav != blank -%}
+{%- if lr_denied or lr_commerce or lr_hide != blank or lr_nav != blank or lr_variants != blank -%}
   <script>
     window.LockRules = {
       denied: {{ lr_denied | json }},
+      commerce: {{ lr_commerce | json }},
       action: {{ lr_act | json }},
       message: {{ lr_msg | json }},
       redirectUrl: {{ lr_url | json }},
@@ -281,6 +233,7 @@
       remote: [{{ remote_js | remove_last: ',' }}],
       hide: {{ lr_hide | split: ',' | json }},
       nav: {{ lr_nav | split: ',' | json }},
+      variants: {{ lr_variants | split: ',' | json }},
       t: {
         login: {{ tm.login | default: cfg.msg.login | json }},
         loginButton: {{ tm.loginButton | default: cfg.msg.loginButton | json }},

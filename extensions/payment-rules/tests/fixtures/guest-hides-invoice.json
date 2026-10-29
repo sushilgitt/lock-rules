@@ -1,0 +1,61 @@
+{
+  "payload": {
+    "export": "cart-payment-methods-transform-run",
+    "target": "cart.payment-methods.transform.run",
+    "input": {
+      "paymentCustomization": {
+        "config": {
+          "jsonValue": {
+            "rules": [
+              {
+                "methods": [
+                  "invoice",
+                  "net 30"
+                ],
+                "when": "missing_tag",
+                "tags": [
+                  "wholesale"
+                ]
+              },
+              {
+                "methods": [
+                  "cash on delivery"
+                ],
+                "when": "has_tag",
+                "tags": [
+                  "risky"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "cart": {
+        "buyerIdentity": null
+      },
+      "paymentMethods": [
+        {
+          "id": "gid://shopify/PaymentCustomizationPaymentMethod/1",
+          "name": "Credit card"
+        },
+        {
+          "id": "gid://shopify/PaymentCustomizationPaymentMethod/2",
+          "name": "Pay by Invoice (Net 30)"
+        },
+        {
+          "id": "gid://shopify/PaymentCustomizationPaymentMethod/3",
+          "name": "Cash on Delivery (COD)"
+        }
+      ]
+    },
+    "output": {
+      "operations": [
+        {
+          "paymentMethodHide": {
+            "paymentMethodId": "gid://shopify/PaymentCustomizationPaymentMethod/2"
+          }
+        }
+      ]
+    }
+  }
+}

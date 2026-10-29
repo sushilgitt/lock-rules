@@ -125,7 +125,7 @@
     return wrap;
   }
 
-  function renderDenied() {
+  function buildBox(compact) {
     var remote = lr.remote || [];
     var has = function (t) { return remote.some(function (c) { return c.t === t; }); };
     var guestLogin = lr.action === "login" && !lr.signedIn;
@@ -138,7 +138,12 @@
       else if (!has("confirm")) message = lr.t.denied;
     }
 
-    var box = el("div", { "class": "lockrules-denied", role: "region", "aria-live": "polite", style: "max-width:36rem;margin:4rem auto;padding:2rem 1rem;text-align:center" });
+    var box = el("div", {
+      "class": "lockrules-denied",
+      role: "region",
+      "aria-live": "polite",
+      style: compact ? "margin:1rem 0;text-align:left" : "max-width:36rem;margin:4rem auto;padding:2rem 1rem;text-align:center"
+    });
     if (message) box.appendChild(el("p", { style: "white-space:pre-line;margin:0 0 1rem" }, message));
     remote.forEach(function (c) {
       if (c.t === "passcode") box.appendChild(passcodeForm(c));
@@ -148,7 +153,11 @@
       var login = el("a", { href: lr.loginUrl, "class": "button btn" + (has("passcode") ? "" : " button--primary") }, lr.t.loginButton);
       box.appendChild(login);
     }
+    return box;
+  }
 
+  function renderDenied() {
+    var box = buildBox(false);
     var main = document.querySelector("main, #MainContent, [role='main']");
     if (main) {
       main.innerHTML = "";
@@ -158,6 +167,46 @@
       document.body.innerHTML = "";
       document.body.appendChild(box);
     }
+  }
+
+  // Commerce mode: price and buy buttons are hidden by CSS; show the prompt where they were.
+  function renderCommerce() {
+    var anchor = document.querySelector("product-form, .product-form, form[action$='/cart/add']");
+    var box = buildBox(true);
+    if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(box, anchor);
+    else {
+      var main = document.querySelector("main, #MainContent, [role='main']");
+      if (main) main.insertBefore(box, main.firstChild);
+    }
+  }
+
+  // Variant locks: drop locked variants from pickers and refuse to add them to the cart.
+  function guardVariants() {
+    var locked = (lr.variants || []).filter(Boolean);
+    if (!locked.length) return;
+    var isLocked = function (id) { return locked.indexOf(String(id)) !== -1; };
+
+    document.querySelectorAll("select[name='id'] option").forEach(function (o) {
+      if (isLocked(o.value)) o.remove();
+    });
+
+    function sync() {
+      document.querySelectorAll("form[action$='/cart/add']").forEach(function (form) {
+        var input = form.querySelector("[name='id']");
+        var blocked = input && isLocked(input.value);
+        form.querySelectorAll("[type='submit']").forEach(function (b) {
+          b.disabled = Boolean(blocked);
+          if (blocked) b.setAttribute("aria-disabled", "true");
+          else b.removeAttribute("aria-disabled");
+        });
+      });
+    }
+    document.addEventListener("change", function () { setTimeout(sync, 50); }, true);
+    document.addEventListener("submit", function (e) {
+      var input = e.target.querySelector && e.target.querySelector("[name='id']");
+      if (input && isLocked(input.value)) e.preventDefault();
+    }, true);
+    sync();
   }
 
   // IP keys: ask the server once per session; reload if it unlocks anything.
@@ -186,7 +235,11 @@
         if (!others.length) return location.replace(lr.redirectUrl);
       }
       renderDenied();
+    } else if (lr.commerce) {
+      checkIp();
+      renderCommerce();
     }
+    guardVariants();
     if ((lr.hide && lr.hide.length) || (lr.nav && lr.nav.length)) {
       hideLinks(document);
       // Catch cards added later: predictive search, infinite scroll, quick view.

@@ -1,0 +1,21 @@
+query CartPaymentMethodsTransformRunInput($tags: [String!] = []) {
+  paymentCustomization {
+    config: metafield(namespace: "$app", key: "config") {
+      jsonValue
+    }
+  }
+  cart {
+    buyerIdentity {
+      customer {
+        hasTags(tags: $tags) {
+          tag
+          hasTag
+        }
+      }
+    }
+  }
+  paymentMethods {
+    id
+    name
+  }
+}
