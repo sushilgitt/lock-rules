@@ -1,0 +1,33 @@
+query CartValidationsGenerateRunInput($tags: [String!] = [], $collectionIds: [ID!] = []) {
+  validation {
+    config: metafield(namespace: "$app", key: "config") {
+      jsonValue
+    }
+  }
+  cart {
+    buyerIdentity {
+      customer {
+        email
+        hasTags(tags: $tags) {
+          tag
+          hasTag
+        }
+      }
+    }
+    lines {
+      merchandise {
+        __typename
+        ... on ProductVariant {
+          product {
+            id
+            title
+            inCollections(ids: $collectionIds) {
+              collectionId
+              isMember
+            }
+          }
+        }
+      }
+    }
+  }
+}

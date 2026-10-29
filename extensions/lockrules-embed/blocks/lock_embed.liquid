@@ -1,0 +1,230 @@
+{%- comment -%}
+  LockRules evaluator. Runs in <head> on every storefront page.
+
+  Reads the compiled config written by app/lib/compile.server.ts to the app-data
+  metafield `app.metafields.lockrules.config`, decides whether the current page
+  is locked for this visitor, and hands the result to assets/lockrules.js.
+
+  Lock: any key opens it (OR). Key: every condition must pass (AND).
+  Condition codes: signed_in | tag | email_in | email_contains | always.
+  Tag and email values are stored lowercase.
+{%- endcomment -%}
+{%- liquid
+  assign cfg = app.metafields.lockrules.config.value
+  assign lr_denied = false
+  assign lr_act = ''
+  assign lr_msg = ''
+  assign lr_url = ''
+  assign lr_hide = ''
+  assign lr_nav = ''
+
+  assign c_email = ''
+  assign c_tags = '|'
+  if customer
+    assign c_email = customer.email | downcase
+    assign c_tags = customer.tags | join: '|' | downcase | prepend: '|' | append: '|'
+  endif
+
+  assign tpl = template.name
+  assign rid = ''
+  assign col_ids = '|'
+  case tpl
+    when 'product'
+      assign rid = product.id | append: ''
+      for col in product.collections
+        assign col_ids = col_ids | append: col.id | append: '|'
+      endfor
+    when 'collection'
+      assign rid = collection.id | append: ''
+    when 'page'
+      assign rid = page.id | append: ''
+    when 'blog'
+      assign rid = blog.id | append: ''
+    when 'article'
+      assign rid = article.id | append: ''
+      assign blog_id = blog.id | append: ''
+  endcase
+
+  for lock in cfg.locks
+    assign applies = false
+    case lock.type
+      when 'store'
+        assign applies = true
+        if template.directory == 'customers' or tpl == 'password'
+          assign applies = false
+        elsif tpl == 'index' and lock.ex contains 'home'
+          assign applies = false
+        elsif tpl == 'page' and lock.ex contains 'pages'
+          assign applies = false
+        elsif tpl == 'search' and lock.ex contains 'search'
+          assign applies = false
+        elsif request.path contains '/policies/' and lock.ex contains 'policies'
+          assign applies = false
+        endif
+      when 'product'
+        if tpl == 'product' and lock.ids contains rid
+          assign applies = true
+        endif
+      when 'collection'
+        if tpl == 'collection' and lock.ids contains rid
+          assign applies = true
+        elsif tpl == 'product'
+          for lid in lock.ids
+            assign needle = '|' | append: lid | append: '|'
+            if col_ids contains needle
+              assign applies = true
+              break
+            endif
+          endfor
+        endif
+      when 'page', 'article'
+        if tpl == lock.type and lock.ids contains rid
+          assign applies = true
+        endif
+      when 'blog'
+        if tpl == 'blog' and lock.ids contains rid
+          assign applies = true
+        elsif tpl == 'article' and lock.ids contains blog_id
+          assign applies = true
+        endif
+    endcase
+
+    unless applies or lock.hide or lock.nav
+      continue
+    endunless
+
+    assign open = false
+    for key in lock.keys
+      assign key_ok = true
+      if key.c.size == 0
+        assign key_ok = false
+      endif
+      for c in key.c
+        assign pass = false
+        case c.t
+          when 'always'
+            assign pass = true
+          when 'signed_in'
+            if customer
+              assign pass = true
+            endif
+          when 'tag'
+            for tg in c.v
+              assign needle = '|' | append: tg | append: '|'
+              if c_tags contains needle
+                assign pass = true
+                break
+              endif
+            endfor
+          when 'email_in'
+            if customer and c.v contains c_email
+              assign pass = true
+            endif
+          when 'email_contains'
+            if customer
+              for part in c.v
+                if c_email contains part
+                  assign pass = true
+                  break
+                endif
+              endfor
+            endif
+        endcase
+        if c.inv
+          if pass
+            assign pass = false
+          else
+            assign pass = true
+          endif
+        endif
+        unless pass
+          assign key_ok = false
+          break
+        endunless
+      endfor
+      if key_ok
+        assign open = true
+        break
+      endif
+    endfor
+
+    if open
+      continue
+    endif
+
+    if applies and lr_denied == false
+      assign lr_denied = true
+      assign lr_act = lock.act
+      assign lr_msg = lock.msg
+      assign lr_url = lock.url
+    endif
+
+    if lock.type == 'product' or lock.type == 'collection' or lock.type == 'page' or lock.type == 'blog'
+      assign prefix = '/' | append: lock.type | append: 's/'
+      for h in lock.handles
+        if lock.hide
+          assign lr_hide = lr_hide | append: prefix | append: h | append: ','
+        endif
+        if lock.nav
+          assign lr_nav = lr_nav | append: prefix | append: h | append: ','
+        endif
+      endfor
+    endif
+  endfor
+
+  if lr_denied and lr_act == 'redirect' and lr_url == blank
+    assign lr_act = 'message'
+  endif
+  if lr_msg == blank
+    if lr_act == 'login' and customer == nil
+      assign lr_msg = cfg.msg.login
+    else
+      assign lr_msg = cfg.msg.denied
+    endif
+  endif
+  if lr_act == 'login' and customer
+    assign lr_act = 'message'
+  endif
+
+  assign login_url = routes.account_login_url
+  if login_url contains '?'
+    assign login_url = login_url | append: '&'
+  else
+    assign login_url = login_url | append: '?'
+  endif
+  assign return_to = request.path | url_encode
+  assign login_url = login_url | append: 'return_url=' | append: return_to | append: '&return_to=' | append: return_to
+-%}
+{%- if lr_denied and lr_act == 'redirect' -%}
+  <meta http-equiv="refresh" content="0;url={{ lr_url | escape }}">
+  <script>
+    location.replace({{ lr_url | json }});
+  </script>
+{%- elsif lr_denied -%}
+  <style>
+    main, #MainContent, [role='main'] { visibility: hidden !important; }
+    .lockrules-denied { visibility: visible !important; }
+  </style>
+{%- endif -%}
+{%- if lr_denied or lr_hide != blank or lr_nav != blank -%}
+  <script>
+    window.LockRules = {
+      denied: {{ lr_denied | json }},
+      action: {{ lr_act | json }},
+      message: {{ lr_msg | json }},
+      loginUrl: {{ login_url | json }},
+      loginLabel: {{ cfg.msg.loginButton | json }},
+      hide: {{ lr_hide | split: ',' | json }},
+      nav: {{ lr_nav | split: ',' | json }}
+    };
+  </script>
+  <script src="{{ 'lockrules.js' | asset_url }}" defer></script>
+{%- endif -%}
+
+{% schema %}
+{
+  "name": "LockRules",
+  "target": "head",
+  "settings": []
+}
+{% endschema %}

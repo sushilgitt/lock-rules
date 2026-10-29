@@ -1,0 +1,109 @@
+{
+  "payload": {
+    "export": "cart-validations-generate-run",
+    "target": "cart.validations.generate.run",
+    "input": {
+      "validation": {
+        "config": {
+          "jsonValue": {
+            "message": "{title} isn't available for your account.",
+            "locks": [
+              {
+                "id": "l1",
+                "type": "product",
+                "ids": [
+                  "gid://shopify/Product/1"
+                ],
+                "keys": [
+                  {
+                    "c": [
+                      {
+                        "t": "tag",
+                        "v": [
+                          "vip"
+                        ],
+                        "inv": false
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "l2",
+                "type": "collection",
+                "ids": [
+                  "gid://shopify/Collection/9"
+                ],
+                "keys": [
+                  {
+                    "c": [
+                      {
+                        "t": "signed_in",
+                        "v": [],
+                        "inv": false
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "cart": {
+        "buyerIdentity": {
+          "customer": {
+            "email": "a@b.com",
+            "hasTags": [
+              {
+                "tag": "vip",
+                "hasTag": true
+              }
+            ]
+          }
+        },
+        "lines": [
+          {
+            "merchandise": {
+              "__typename": "ProductVariant",
+              "product": {
+                "id": "gid://shopify/Product/1",
+                "title": "VIP Hoodie",
+                "inCollections": [
+                  {
+                    "collectionId": "gid://shopify/Collection/9",
+                    "isMember": false
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "merchandise": {
+              "__typename": "ProductVariant",
+              "product": {
+                "id": "gid://shopify/Product/2",
+                "title": "Members Tee",
+                "inCollections": [
+                  {
+                    "collectionId": "gid://shopify/Collection/9",
+                    "isMember": true
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "output": {
+      "operations": [
+        {
+          "validationAdd": {
+            "errors": []
+          }
+        }
+      ]
+    }
+  }
+}

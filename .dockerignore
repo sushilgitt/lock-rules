@@ -1,0 +1,9 @@
+.cache
+build
+node_modules
+**/node_modules
+.env
+.env.*
+.git
+extensions/*/dist
+.shopify

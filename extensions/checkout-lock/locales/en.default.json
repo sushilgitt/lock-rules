@@ -1,0 +1,4 @@
+{
+  "name": "LockRules checkout protection",
+  "description": "Blocks checkout for locked products the buyer isn't allowed to access."
+}

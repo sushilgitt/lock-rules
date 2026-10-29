@@ -1,0 +1,98 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Session {
+  id                  String    @id
+  shop                String
+  state               String
+  isOnline            Boolean   @default(false)
+  scope               String?
+  expires             DateTime?
+  accessToken         String
+  userId              BigInt?
+  firstName           String?
+  lastName            String?
+  email               String?
+  accountOwner        Boolean   @default(false)
+  locale              String?
+  collaborator        Boolean?  @default(false)
+  emailVerified       Boolean?  @default(false)
+  refreshToken        String?
+  refreshTokenExpires DateTime?
+
+  @@index([shop])
+}
+
+model Shop {
+  id             String    @id @default(cuid())
+  domain         String    @unique
+  installedAt    DateTime  @default(now())
+  uninstalledAt  DateTime?
+  // Shopify Validation (checkout function owner) we created for this shop
+  validationId   String?
+  // Storefront-facing defaults: messages, login prompt text, etc.
+  settings       Json      @default("{}")
+  lastSyncedAt   DateTime?
+  syncError      String?
+  locks          Lock[]
+}
+
+model Lock {
+  id              String   @id @default(cuid())
+  shopId          String
+  shop            Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name            String
+  // product | collection | page | blog | article | store
+  resourceType    String
+  // [{ id: "gid://shopify/Product/1", handle: "x", title: "X" }]
+  resources       Json     @default("[]")
+  enabled         Boolean  @default(true)
+  hideFromLists   Boolean  @default(false)
+  hideNavLinks    Boolean  @default(false)
+  // message | login | redirect
+  deniedAction    String   @default("message")
+  deniedMessage   String?
+  redirectUrl     String?
+  // store lock only: ["home", "policies", "search", "pages"]
+  storeExceptions Json     @default("[]")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  keys            LockKey[]
+
+  @@index([shopId])
+}
+
+// Keys are ORed: any one key opens the lock.
+model LockKey {
+  id         String      @id @default(cuid())
+  lockId     String
+  lock       Lock        @relation(fields: [lockId], references: [id], onDelete: Cascade)
+  position   Int         @default(0)
+  conditions Condition[]
+
+  @@index([lockId])
+}
+
+// Conditions are ANDed: every condition in a key must pass.
+model Condition {
+  id       String  @id @default(cuid())
+  keyId    String
+  key      LockKey @relation(fields: [keyId], references: [id], onDelete: Cascade)
+  position Int     @default(0)
+  // signed_in | tag | email_in | email_contains | always
+  type     String
+  // { value: string } or { values: string[] }
+  params   Json    @default("{}")
+  inverted Boolean @default(false)
+
+  @@index([keyId])
+}
