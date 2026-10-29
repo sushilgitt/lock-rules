@@ -9,11 +9,15 @@ import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 
 import { authenticate } from "../shopify.server";
+import { requireFeature } from "../lib/gate.server";
+import { UpgradeCard } from "../components/UpgradeCard";
 import { ensureShop, listLocks } from "../models/lock.server";
 import { createApiKey, listApiKeys, revokeApiKey } from "../lib/api.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
+  const gate = await requireFeature(admin.graphql, session.shop, "api");
+  if (gate) return { gate } as never;
   const shop = await ensureShop(session.shop);
   const locks = await listLocks(shop.id);
   return {
@@ -25,7 +29,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
+  if (await requireFeature(admin.graphql, session.shop, "api")) {
+    throw new Response("Upgrade required", { status: 402 });
+  }
   const shop = await ensureShop(session.shop);
   const body = await request.json();
   if (body.intent === "revoke") {
@@ -47,6 +54,18 @@ function Code({ children }: { children: string }) {
 }
 
 export default function Developers() {
+  const gated = useLoaderData() as { gate?: string };
+  if (gated?.gate) {
+    return (
+      <s-page heading="Developers">
+        <UpgradeCard feature="The developer API" plan={gated.gate} />
+      </s-page>
+    );
+  }
+  return <Page />;
+}
+
+function Page() {
   const { keys, baseUrl, locks, secure } = useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
   const shopify = useAppBridge();

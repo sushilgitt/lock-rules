@@ -18,6 +18,9 @@ import {
   updateLock,
 } from "../models/lock.server";
 import { syncShop } from "../lib/compile.server";
+import { currentPlan } from "../lib/billing.server";
+import { planProblems } from "../lib/plans";
+import prisma from "../db.server";
 import { listInputLists } from "../models/inputList.server";
 import { allAudiences, type Audience } from "../lib/integrations.server";
 import {
@@ -100,6 +103,12 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const lock = body.lock as LockInput;
   const errors = validateLock(lock);
   if (errors.length) return { ok: false as const, errors };
+  const plan = await currentPlan(admin.graphql, session.shop);
+  const others = await prisma.lock.count({
+    where: { shopId: shop.id, ...(params.id === "new" ? {} : { id: { not: params.id } }) },
+  });
+  const limits = planProblems(plan, lock, others);
+  if (limits.length) return { ok: false as const, errors: limits, upgrade: true };
 
   const saved =
     params.id === "new"
@@ -527,6 +536,11 @@ export default function LockEditor() {
               <s-list-item key={e}>{e}</s-list-item>
             ))}
           </s-unordered-list>
+          {fetcher.data && "upgrade" in fetcher.data && fetcher.data.upgrade && (
+            <s-button slot="secondary-actions" href="/app/plans">
+              See plans
+            </s-button>
+          )}
         </s-banner>
       )}
 

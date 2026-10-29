@@ -56,6 +56,10 @@ model Shop {
   secureExcluded Json      @default("[]")
   // Last install result: { at, themeName, edited: [...], warnings: [...], error? }
   secureReport   Json      @default("{}")
+  // Shopify App Pricing plan handle (free | basic | pro), cached from the Partner API
+  planHandle     String?
+  planCheckedAt  DateTime?
+  trialEndsAt    DateTime?
   locks          Lock[]
   inputLists     InputList[]
   keyUsages      KeyUsage[]

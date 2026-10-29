@@ -9,6 +9,8 @@ import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 
 import { authenticate } from "../shopify.server";
+import { requireFeature } from "../lib/gate.server";
+import { UpgradeCard } from "../components/UpgradeCard";
 import { ensureShop } from "../models/lock.server";
 import {
   deleteInputList,
@@ -21,7 +23,9 @@ import { MAX_ENTRIES, type ListEntry, type ListKind } from "../lib/lists";
 import { syncShop } from "../lib/compile.server";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
+  const gate = await requireFeature(admin.graphql, session.shop, "lists");
+  if (gate) return { gate } as never;
   const shop = await ensureShop(session.shop);
   if (params.id === "new") {
     return { isNew: true, name: "", kind: "passcode" as ListKind, text: "" };
@@ -38,6 +42,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
+  if (await requireFeature(admin.graphql, session.shop, "lists")) {
+    throw new Response("Upgrade required", { status: 402 });
+  }
   const shop = await ensureShop(session.shop);
   const body = await request.json();
 
@@ -75,6 +82,18 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 };
 
 export default function InputListEditor() {
+  const gated = useLoaderData() as { gate?: string };
+  if (gated?.gate) {
+    return (
+      <s-page heading="Input lists">
+        <UpgradeCard feature="Input lists" plan={gated.gate} />
+      </s-page>
+    );
+  }
+  return <Page />;
+}
+
+function Page() {
   const data = useLoaderData<typeof loader>();
   const [name, setName] = useState(data.name);
   const [kind, setKind] = useState<ListKind>(data.kind);

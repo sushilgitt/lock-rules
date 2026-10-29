@@ -1,65 +1,52 @@
-import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
-import { redirect, Form, useActionData, useLoaderData } from "react-router";
-
-import { login } from "../../shopify.server";
-import { loginErrorMessage } from "./error.server";
+import type { LoaderFunctionArgs, MetaFunction } from "react-router";
+import { redirect } from "react-router";
 
 import styles from "./styles.module.css";
 
+export const meta: MetaFunction = () => [
+  { title: "LockRules: access control for Shopify stores" },
+  {
+    name: "description",
+    content:
+      "Lock products, collections, pages or your whole store to customers with a tag, passcode, secret link, location or newsletter signup.",
+  },
+];
+
+// Public landing page. Installation always starts from Shopify (App Store or
+// admin), so there is deliberately no "enter your shop domain" form here.
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
-
   if (url.searchParams.get("shop")) {
     throw redirect(`/app?${url.searchParams.toString()}`);
   }
-
-  return { showForm: Boolean(login) };
+  return null;
 };
 
-export const action = async ({ request }: ActionFunctionArgs) => {
-  const errors = loginErrorMessage(await login(request));
-
-  return { errors };
-};
-
-export default function App() {
-  const { showForm } = useLoaderData<typeof loader>();
-  const actionData = useActionData<typeof action>();
-  const errors = actionData?.errors;
-
+export default function Landing() {
   return (
     <div className={styles.index}>
       <div className={styles.content}>
-        <h1 className={styles.heading}>A short heading about [your app]</h1>
+        <h1 className={styles.heading}>LockRules</h1>
         <p className={styles.text}>
-          A tagline about [your app] that describes your value proposition.
+          Members-only products, wholesale pricing and private pages for your Shopify store.
         </p>
-        {showForm && (
-          <Form className={styles.form} method="post">
-            <label className={styles.label}>
-              <span>Shop domain</span>
-              <input className={styles.input} type="text" name="shop" />
-              <span>{errors?.shop ?? "e.g: my-shop-domain.myshopify.com"}</span>
-            </label>
-            <button className={styles.button} type="submit">
-              Log in
-            </button>
-          </Form>
-        )}
         <ul className={styles.list}>
           <li>
-            <strong>Product feature</strong>. Some detail about your feature and
-            its benefit to your customer.
+            <strong>Lock anything</strong>. Products, collections, pages, blogs, vendors, tags or
+            the whole store.
           </li>
           <li>
-            <strong>Product feature</strong>. Some detail about your feature and
-            its benefit to your customer.
+            <strong>Flexible keys</strong>. Customer tags, passcodes, secret links, location,
+            order history, schedules and newsletter signups.
           </li>
           <li>
-            <strong>Product feature</strong>. Some detail about your feature and
-            its benefit to your customer.
+            <strong>Enforced at checkout</strong>. Locked products can&apos;t be bought by anyone
+            without a key.
           </li>
         </ul>
+        <p className={styles.text}>
+          Install LockRules from the Shopify App Store. <a href="/privacy">Privacy policy</a>
+        </p>
       </div>
     </div>
   );

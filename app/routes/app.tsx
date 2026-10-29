@@ -29,6 +29,8 @@ export default function App() {
         <s-link href="/app/secure">Secure mode</s-link>
         <s-link href="/app/integrations">Integrations</s-link>
         <s-link href="/app/developers">Developers</s-link>
+        <s-link href="/app/debug">Debugger</s-link>
+        <s-link href="/app/plans">Plans</s-link>
         <s-link href="/app/settings">Settings</s-link>
       </s-app-nav>
       <Outlet />

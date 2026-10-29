@@ -9,6 +9,8 @@ import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 
 import { authenticate } from "../shopify.server";
+import { requireFeature } from "../lib/gate.server";
+import { UpgradeCard } from "../components/UpgradeCard";
 import { ensureShop } from "../models/lock.server";
 import {
   connect,
@@ -32,13 +34,18 @@ const PROVIDERS: { id: Provider; name: string; keyHelp: string }[] = [
 ];
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
+  const gate = await requireFeature(admin.graphql, session.shop, "integrations");
+  if (gate) return { gate } as never;
   const shop = await ensureShop(session.shop);
   return { connected: await listIntegrations(shop.id) };
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
+  if (await requireFeature(admin.graphql, session.shop, "integrations")) {
+    throw new Response("Upgrade required", { status: 402 });
+  }
   const shop = await ensureShop(session.shop);
   const body = await request.json();
   const provider: Provider = body.provider === "mailchimp" ? "mailchimp" : "klaviyo";
@@ -129,6 +136,18 @@ function ProviderCard({
 }
 
 export default function Integrations() {
+  const gated = useLoaderData() as { gate?: string };
+  if (gated?.gate) {
+    return (
+      <s-page heading="Integrations">
+        <UpgradeCard feature="Integrations" plan={gated.gate} />
+      </s-page>
+    );
+  }
+  return <Page />;
+}
+
+function Page() {
   const { connected } = useLoaderData<typeof loader>();
 
   return (

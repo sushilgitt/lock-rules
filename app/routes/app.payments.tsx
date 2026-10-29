@@ -9,6 +9,8 @@ import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 
 import { authenticate } from "../shopify.server";
+import { requireFeature } from "../lib/gate.server";
+import { UpgradeCard } from "../components/UpgradeCard";
 import { ensureShop } from "../models/lock.server";
 import { getSettings, type PaymentRule } from "../lib/settings";
 import { splitList } from "../lib/locks";
@@ -18,13 +20,18 @@ import { syncShop } from "../lib/compile.server";
 type Draft = { methods: string; when: PaymentRule["when"]; tags: string };
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
+  const gate = await requireFeature(admin.graphql, session.shop, "payments");
+  if (gate) return { gate } as never;
   const shop = await ensureShop(session.shop);
   return { rules: getSettings(shop.settings).paymentRules };
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
+  if (await requireFeature(admin.graphql, session.shop, "payments")) {
+    throw new Response("Upgrade required", { status: 402 });
+  }
   const body = (await request.json()) as { rules: PaymentRule[] };
   const { paymentRules } = await updateSettings(session.shop, { paymentRules: body.rules });
   const sync = await syncShop(admin.graphql, session.shop);
@@ -38,6 +45,18 @@ const toDraft = (r: PaymentRule): Draft => ({
 });
 
 export default function PaymentRules() {
+  const gated = useLoaderData() as { gate?: string };
+  if (gated?.gate) {
+    return (
+      <s-page heading="Payment rules">
+        <UpgradeCard feature="Payment rules" plan={gated.gate} />
+      </s-page>
+    );
+  }
+  return <Page />;
+}
+
+function Page() {
   const { rules } = useLoaderData<typeof loader>();
   const [drafts, setDrafts] = useState<Draft[]>(rules.map(toDraft));
   const fetcher = useFetcher<typeof action>();

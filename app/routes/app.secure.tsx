@@ -9,6 +9,8 @@ import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 
 import { authenticate } from "../shopify.server";
+import { requireFeature } from "../lib/gate.server";
+import { UpgradeCard } from "../components/UpgradeCard";
 import prisma from "../db.server";
 import { ensureShop, listLocks } from "../models/lock.server";
 import { syncShop } from "../lib/compile.server";
@@ -21,7 +23,9 @@ import {
 } from "../lib/secure/install.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
+  const gate = await requireFeature(admin.graphql, session.shop, "secure");
+  if (gate) return { gate } as never;
   const shop = await ensureShop(session.shop);
   return {
     enabled: shop.secureEnabled,
@@ -32,6 +36,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
+  if (await requireFeature(admin.graphql, session.shop, "secure")) {
+    throw new Response("Upgrade required", { status: 402 });
+  }
   const shop = await ensureShop(session.shop);
   const body = await request.json();
   const locks = await listLocks(shop.id);
@@ -63,6 +70,18 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function SecureMode() {
+  const gated = useLoaderData() as { gate?: string };
+  if (gated?.gate) {
+    return (
+      <s-page heading="Secure mode">
+        <UpgradeCard feature="Secure mode" plan={gated.gate} />
+      </s-page>
+    );
+  }
+  return <Page />;
+}
+
+function Page() {
   const { enabled, excluded, report } = useLoaderData<typeof loader>();
   const [excludedText, setExcludedText] = useState(excluded.join("\n"));
   const fetcher = useFetcher<typeof action>();

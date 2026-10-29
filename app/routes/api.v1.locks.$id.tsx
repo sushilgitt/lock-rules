@@ -3,6 +3,7 @@ import { deleteLock, getLock, toLockInput, updateLock } from "../models/lock.ser
 import {
   apiError,
   authenticateApi,
+  enforcePlan,
   normalizeLock,
   readJson,
   serializeLock,
@@ -34,6 +35,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
   const body = await readJson(request);
   const input = normalizeLock(body, request.method === "PATCH" ? toLockInput(existing) : undefined);
+  await enforcePlan(shop.id, input, existing.id);
   await updateLock(shop.id, existing.id, input);
   const sync = await syncFromApi(shop.domain);
   const lock = await getLock(shop.id, existing.id);

@@ -15,6 +15,7 @@ import { localToEpoch } from "./time";
 import { syncSeo } from "./seo.server";
 import { syncPaymentRules } from "./payments.server";
 import { refreshSnippets, writeShopConfig } from "./secure/install.server";
+import { currentPlan } from "./billing.server";
 
 /*
  * The compiler turns the locks stored in our database into two JSON documents:
@@ -405,7 +406,11 @@ export async function syncShop(graphql: GraphQL, domain: string) {
     shop = await prisma.shop.update({ where: { id: shop.id }, data: { hmacSecret: newSecret() } });
   }
   const secret = shop.hmacSecret!;
-  const [locks, lists] = await Promise.all([listLocks(shop.id), loadListEntries(shop.id)]);
+  const [allLocks, lists] = await Promise.all([listLocks(shop.id), loadListEntries(shop.id)]);
+  const plan = await currentPlan(graphql, domain);
+  const enabledIds = allLocks.filter((l) => l.enabled).slice(0, plan.maxLocks).map((l) => l.id);
+  const locks = allLocks.map((l) => (l.enabled && !enabledIds.includes(l.id) ? { ...l, enabled: false } : l));
+  const overLimit = allLocks.filter((l) => l.enabled).length - enabledIds.length;
   const settings = getSettings(shop.settings);
   const problems: string[] = [];
   let timeZone = "UTC";
@@ -424,6 +429,9 @@ export async function syncShop(graphql: GraphQL, domain: string) {
     timeZone,
   );
   problems.push(...warnings);
+  if (overLimit > 0) {
+    problems.push(`${overLimit} active lock${overLimit === 1 ? " is" : "s are"} over your ${plan.name} plan's limit and not applied. Upgrade or turn some off.`);
+  }
 
   if (!tooLarge) {
     try {

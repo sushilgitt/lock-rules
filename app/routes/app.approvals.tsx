@@ -9,6 +9,8 @@ import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 
 import { authenticate } from "../shopify.server";
+import { requireFeature } from "../lib/gate.server";
+import { UpgradeCard } from "../components/UpgradeCard";
 import { ensureShop } from "../models/lock.server";
 import { getSettings, type ApprovalSettings } from "../lib/settings";
 import { retagCustomer, updateSettings } from "../lib/customers.server";
@@ -17,6 +19,8 @@ type Pending = { id: string; name: string; email: string; createdAt: string };
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
+  const gate = await requireFeature(admin.graphql, session.shop, "approval");
+  if (gate) return { gate } as never;
   const shop = await ensureShop(session.shop);
   const { approval } = getSettings(shop.settings);
 
@@ -51,6 +55,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
+  if (await requireFeature(admin.graphql, session.shop, "approval")) {
+    throw new Response("Upgrade required", { status: 402 });
+  }
   const body = await request.json();
   const shop = await ensureShop(session.shop);
   const { approval } = getSettings(shop.settings);
@@ -74,6 +81,18 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function Approvals() {
+  const gated = useLoaderData() as { gate?: string };
+  if (gated?.gate) {
+    return (
+      <s-page heading="Customer approval">
+        <UpgradeCard feature="Customer approval" plan={gated.gate} />
+      </s-page>
+    );
+  }
+  return <Page />;
+}
+
+function Page() {
   const { approval: initial, pending, error } = useLoaderData<typeof loader>();
   const [approval, setApproval] = useState(initial);
   const fetcher = useFetcher<typeof action>();

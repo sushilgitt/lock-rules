@@ -3,16 +3,32 @@ import { useLoaderData } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 
 import { authenticate } from "../shopify.server";
+import { requireFeature } from "../lib/gate.server";
+import { UpgradeCard } from "../components/UpgradeCard";
 import { ensureShop } from "../models/lock.server";
 import { listInputLists } from "../models/inputList.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
+  const gate = await requireFeature(admin.graphql, session.shop, "lists");
+  if (gate) return { gate } as never;
   const shop = await ensureShop(session.shop);
   return { lists: await listInputLists(shop.id) };
 };
 
 export default function InputLists() {
+  const gated = useLoaderData() as { gate?: string };
+  if (gated?.gate) {
+    return (
+      <s-page heading="Input lists">
+        <UpgradeCard feature="Input lists" plan={gated.gate} />
+      </s-page>
+    );
+  }
+  return <Page />;
+}
+
+function Page() {
   const { lists } = useLoaderData<typeof loader>();
 
   return (

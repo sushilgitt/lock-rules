@@ -3,6 +3,7 @@ import { createLock, getLock, listLocks } from "../models/lock.server";
 import {
   apiError,
   authenticateApi,
+  enforcePlan,
   normalizeLock,
   readJson,
   serializeLock,
@@ -21,6 +22,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   if (request.method !== "POST") return apiError(405, "Use POST to create a lock.");
   const shop = await authenticateApi(request);
   const input = normalizeLock(await readJson(request));
+  await enforcePlan(shop.id, input);
   const created = await createLock(shop.id, input);
   const sync = await syncFromApi(shop.domain);
   const lock = await getLock(shop.id, created.id);

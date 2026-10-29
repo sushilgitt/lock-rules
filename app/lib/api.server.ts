@@ -6,6 +6,8 @@ import { syncShop } from "./compile.server";
 import { emptyLock, validateLock, type LockInput } from "./locks";
 import type { LockWithKeys } from "../models/lock.server";
 import { toLockInput } from "../models/lock.server";
+import { cachedPlan } from "./billing.server";
+import { allowsFeature, planProblems } from "./plans";
 
 /*
  * Public REST API (/api/v1/*) for managing locks, input lists and reading key
@@ -65,6 +67,10 @@ export async function authenticateApi(request: Request) {
   if (!key || key.shop.uninstalledAt) throw apiError(401, "Invalid API key.");
   if (rateLimited(key.id)) throw apiError(429, `Rate limit is ${RATE_PER_MINUTE} requests per minute.`);
 
+  if (!allowsFeature(await cachedPlan(key.shopId), "api")) {
+    throw apiError(402, "The REST API is on the Pro plan.");
+  }
+
   if (!key.lastUsedAt || Date.now() - key.lastUsedAt.getTime() > 5 * 60_000) {
     await prisma.apiKey.update({ where: { id: key.id }, data: { lastUsedAt: new Date() } });
   }
@@ -117,4 +123,13 @@ export function serializeLock(lock: LockWithKeys) {
     createdAt: lock.createdAt.toISOString(),
     updatedAt: lock.updatedAt.toISOString(),
   };
+}
+
+/** Rejects locks the shop's plan doesn't cover (lock count, key types). */
+export async function enforcePlan(shopId: string, lock: LockInput, excludeLockId?: string) {
+  const others = await prisma.lock.count({
+    where: { shopId, ...(excludeLockId ? { id: { not: excludeLockId } } : {}) },
+  });
+  const problems = planProblems(await cachedPlan(shopId), lock, others);
+  if (problems.length) throw apiError(402, "Not available on your plan.", problems);
 }
