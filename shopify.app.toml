@@ -27,13 +27,15 @@ api_version = "2027-01"
   uri = "/webhooks/app/scopes_update"
   topics = [ "app/scopes_update" ]
 
-  [[webhooks.subscriptions]]
-  uri = "/webhooks/orders/paid"
-  topics = [ "orders/paid" ]
-
-  [[webhooks.subscriptions]]
-  uri = "/webhooks/customers/create"
-  topics = [ "customers/create" ]
+  # Needs protected customer data approval (Partner Dashboard > API access) before
+  # Shopify accepts these. Uncomment once approved; the handlers already exist.
+  # [[webhooks.subscriptions]]
+  # uri = "/webhooks/orders/paid"
+  # topics = [ "orders/paid" ]
+  #
+  # [[webhooks.subscriptions]]
+  # uri = "/webhooks/customers/create"
+  # topics = [ "customers/create" ]
 
   [[webhooks.subscriptions]]
   uri = "/webhooks/compliance"

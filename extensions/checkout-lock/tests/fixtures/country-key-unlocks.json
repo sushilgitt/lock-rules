@@ -186,24 +186,13 @@
           "date": "2026-10-29",
           "d0": false,
           "d1": false,
-          "d2": false,
-          "d3": false,
-          "d4": false,
-          "d5": false,
-          "d6": false,
-          "d7": false,
           "w0": false,
-          "w1": false,
-          "w2": false,
-          "w3": false
+          "w1": false
         }
       },
       "localization": {
         "country": {
           "isoCode": "CA"
-        },
-        "market": {
-          "handle": "us"
         }
       },
       "cart": {

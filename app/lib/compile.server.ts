@@ -47,8 +47,11 @@ const MAX_CONFIG_BYTES = 120_000;
 
 // Fixed input-query slots the checkout function uses for time conditions
 // (shop.localTime.dateTimeAfter / timeBetween need literal arguments).
-export const DATE_SLOTS = 8;
-export const SCHEDULE_SLOTS = 4;
+// Functions cap input query cost at 30, which leaves room for two of each.
+export const DATE_SLOTS = 2;
+export const SCHEDULE_SLOTS = 2;
+// Functions don't receive metafields over 10,000 bytes.
+const MAX_CHECKOUT_BYTES = 9_500;
 
 // n: number (storefront: cents / order count / epoch; checkout: amount / order count)
 // f/e: schedule window "HHMM" (storefront) or "HH:MM:00" (checkout)
@@ -66,6 +69,8 @@ type CompiledCondition = {
   s?: number;
   // checkout schedule that wraps past midnight: slot holds the reversed window
   o?: boolean;
+  // checkout: values left out to fit the function's metafield limit; storefront-only
+  x?: boolean;
 };
 type CompiledKey = { c: CompiledCondition[] };
 
@@ -269,9 +274,29 @@ export function compile(
     );
   }
 
+  const checkout: CheckoutConfig = { locks: checkoutLocks, message: settings.messages.checkout, secret };
+  if (Buffer.byteLength(JSON.stringify(checkout)) > MAX_CHECKOUT_BYTES) {
+    // Email lists are the usual culprit: enforce them on the storefront only.
+    for (const lock of checkout.locks) {
+      for (const key of lock.keys) {
+        for (const c of key.c) {
+          if (c.t === "email_in" && c.v.length) {
+            c.v = [];
+            c.x = true;
+          }
+        }
+      }
+    }
+    warnings.push(
+      Buffer.byteLength(JSON.stringify(checkout)) > MAX_CHECKOUT_BYTES
+        ? "Your locks are too large for checkout protection, so checkout isn't enforcing them. Reduce the number of locks or values."
+        : "Email lists are too long to check at checkout, so they only apply on the storefront. Use customer tags for checkout protection.",
+    );
+  }
+
   return {
     storefront,
-    checkout: { locks: checkoutLocks, message: settings.messages.checkout, secret } as CheckoutConfig,
+    checkout,
     vars: {
       tags: [...tags].slice(0, MAX_FUNCTION_LIST),
       productTags: [...productTags].slice(0, MAX_FUNCTION_LIST),

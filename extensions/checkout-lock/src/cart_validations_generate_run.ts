@@ -14,6 +14,7 @@ type Condition = {
   n?: number;
   s?: number;
   o?: boolean;
+  x?: boolean;
 };
 type Key = { c: Condition[] };
 type LockType = "product" | "collection" | "store" | "variant" | "vendor" | "product_tag";
@@ -27,7 +28,6 @@ type Buyer = {
   orders: number;
   purchased: Set<string>;
   country: string;
-  market: string;
   // Condition uids unlocked by a valid, unexpired token in the `_lr` cart attribute.
   unlocked: Set<string>;
   cartProducts: Set<string>;
@@ -59,6 +59,8 @@ export function unlockedConditions(raw: string | null | undefined, secret: strin
 }
 
 function conditionPasses(c: Condition, buyer: Buyer): boolean {
+  // Too large to ship to checkout (see compile.server.ts); the storefront enforces it.
+  if (c.x) return true;
   let pass: boolean;
   switch (c.t) {
     case "always":
@@ -95,9 +97,6 @@ function conditionPasses(c: Condition, buyer: Buyer): boolean {
     case "country":
       pass = c.v.includes(buyer.country);
       break;
-    case "market":
-      pass = c.v.includes(buyer.market);
-      break;
     case "passcode":
     case "secret_link":
     case "confirm":
@@ -117,7 +116,8 @@ function conditionPasses(c: Condition, buyer: Buyer): boolean {
       break;
     }
     case "domain":
-      // The storefront domain isn't known at checkout; don't let it block a purchase.
+    case "market":
+      // Not available to checkout functions; the storefront enforces these.
       return true;
     default:
       pass = false;
@@ -153,14 +153,13 @@ export function cartValidationsGenerateRun(
       orders: customer?.numberOfOrders ?? 0,
       purchased: new Set(Array.isArray(purchased) ? purchased.map(String) : []),
       country: String(input.localization.country.isoCode).toLowerCase(),
-      market: (input.localization.market?.handle ?? "").toLowerCase(),
       unlocked: unlockedConditions(input.cart.tokens?.value, config.secret ?? "", time.date),
       cartProducts: new Set(variants.map((v) => legacy(v.product.id))),
       cartVariants: new Set(variants.map((v) => legacy(v.id))),
       subtotal: Number(input.cart.cost.subtotalAmount.amount) / rate,
       weekday: ((new Date(`${time.date}T12:00:00Z`).getUTCDay() + 6) % 7) + 1,
-      dateSlots: [time.d0, time.d1, time.d2, time.d3, time.d4, time.d5, time.d6, time.d7],
-      scheduleSlots: [time.w0, time.w1, time.w2, time.w3],
+      dateSlots: [time.d0, time.d1],
+      scheduleSlots: [time.w0, time.w1],
     };
 
     const openCache = new Map<string, boolean>();
