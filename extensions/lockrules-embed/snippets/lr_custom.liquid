@@ -1,0 +1,20 @@
+{% # theme-check-disable UnusedDocParam %}
+{%- doc -%}
+  Custom Liquid rules (Liquid locks and the "custom Liquid" key condition).
+
+  App extensions can't run merchant-written Liquid, so this placeholder renders
+  nothing: Liquid locks never apply and custom Liquid conditions never pass
+  here. Secure mode writes the real version (with the merchant's code) into the
+  theme as snippets/lockrules-custom.liquid; see app/lib/secure.
+
+  @param {string} kind - "lock" or "cond"
+  @param {string} id - Lock id or condition uid
+  @param {product} [product] - Current product, if any
+  @param {collection} [collection] - Current collection, if any
+  @param {page} [page] - Current page, if any
+  @param {blog} [blog] - Current blog, if any
+  @param {article} [article] - Current article, if any
+
+  @example
+  {% render 'lr_custom', kind: 'lock', id: lock.id %}
+{%- enddoc -%}

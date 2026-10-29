@@ -10,6 +10,7 @@ export const RESOURCE_TYPES = [
   { value: "variant", label: "Product variants" },
   { value: "vendor", label: "Products by vendor" },
   { value: "product_tag", label: "Products by tag" },
+  { value: "liquid", label: "Custom (Liquid, secure mode)" },
 ] as const;
 
 export type ResourceType = (typeof RESOURCE_TYPES)[number]["value"];
@@ -120,6 +121,13 @@ export const CONDITION_TYPES = [
     label: "Always permit",
     input: "none",
     help: "Opens the lock for everyone. Combine with other conditions or use for exclusions.",
+  },
+  {
+    value: "liquid",
+    group: "Special",
+    label: "Custom Liquid (secure mode)",
+    input: "liquid",
+    help: "Liquid that outputs true when the condition passes, e.g. {% if customer.accepts_marketing %}true{% endif %}. Only runs in secure mode; otherwise it never passes.",
   },
   {
     value: "order_count",
@@ -233,6 +241,8 @@ export interface ConditionInput {
   days?: number[];
   from?: string;
   to?: string;
+  // liquid: merchant-written Liquid that outputs "true"
+  liquid?: string;
 }
 
 export function newUid() {
@@ -270,6 +280,8 @@ export interface LockInput {
   storeExceptions: string[];
   protect: ProtectMode;
   seoHidden: boolean;
+  // liquid locks: Liquid that outputs "true" on pages the lock covers
+  liquidCode: string;
   keys: KeyInput[];
 }
 
@@ -283,6 +295,7 @@ export function emptyLock(): LockInput {
     hideNavLinks: false,
     protect: "page",
     seoHidden: false,
+    liquidCode: "",
     deniedAction: "login",
     deniedMessage: "",
     redirectUrl: "",
@@ -309,8 +322,11 @@ export function validateLock(lock: LockInput): string[] {
   if (!RESOURCE_TYPES.some((r) => r.value === lock.resourceType)) {
     errors.push("Choose what to lock.");
   }
-  if (lock.resourceType !== "store" && lock.resources.length === 0) {
+  if (!["store", "liquid"].includes(lock.resourceType) && lock.resources.length === 0) {
     errors.push("Pick at least one resource to lock.");
+  }
+  if (lock.resourceType === "liquid") {
+    errors.push(...liquidProblems(lock.liquidCode, "Lock Liquid"));
   }
   if (lock.deniedAction === "redirect" && !/^(https?:\/\/|\/)/.test(lock.redirectUrl)) {
     errors.push("Redirect URL must start with / or https://.");
@@ -336,6 +352,8 @@ export function validateLock(lock: LockInput): string[] {
         errors.push(`Key ${k + 1}, condition ${i + 1}: enter a number.`);
       } else if (conditionMeta(c.type)?.input === "datetime" && !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(c.at ?? "")) {
         errors.push(`Key ${k + 1}, condition ${i + 1}: enter a date and time.`);
+      } else if (c.type === "liquid" && liquidProblems(c.liquid ?? "", "x").length) {
+        errors.push(`Key ${k + 1}, condition ${i + 1}: ${liquidProblems(c.liquid ?? "", "Custom Liquid")[0]}`);
       } else if (
         c.type === "schedule" &&
         (!c.days?.length || !/^\d{2}:\d{2}$/.test(c.from ?? "") || !/^\d{2}:\d{2}$/.test(c.to ?? "") || c.from === c.to)
@@ -369,4 +387,18 @@ export function isIpOrCidr(value: string) {
 export function parsePasscode(entry: string) {
   const [code, redirect] = entry.split("->").map((s) => s.trim());
   return { code, redirect: redirect || undefined };
+}
+
+/**
+ * Basic checks on merchant-written Liquid before it goes into the theme.
+ * Shopify validates syntax when secure mode writes the file.
+ */
+export function liquidProblems(code: string, what: string) {
+  const problems: string[] = [];
+  if (!code.trim()) problems.push(`${what}: enter some Liquid.`);
+  if (code.length > 5000) problems.push(`${what}: keep it under 5,000 characters.`);
+  if (/\{%-?\s*(schema|javascript|stylesheet|section|layout)\b/.test(code)) {
+    problems.push(`${what}: schema, section, layout, javascript and stylesheet tags aren't allowed.`);
+  }
+  return problems;
 }

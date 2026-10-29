@@ -28,6 +28,7 @@ export function readParams(raw: unknown): ConditionParams {
     ...(p.days?.length ? { days: p.days.map(Number).filter((d) => d >= 1 && d <= 7) } : {}),
     ...(p.from ? { from: String(p.from) } : {}),
     ...(p.to ? { to: String(p.to) } : {}),
+    ...(p.liquid ? { liquid: String(p.liquid) } : {}),
   };
 }
 
@@ -84,6 +85,7 @@ function keysCreate(input: LockInput) {
             days: c.days,
             from: c.from,
             to: c.to,
+            liquid: c.type === "liquid" ? c.liquid : undefined,
           });
           return {
             position: i,
@@ -107,6 +109,7 @@ function lockData(input: LockInput) {
     hideNavLinks: input.hideNavLinks,
     protect: input.protect,
     seoHidden: input.seoHidden,
+    liquidCode: input.resourceType === "liquid" ? input.liquidCode : null,
     deniedAction: input.deniedAction,
     deniedMessage: input.deniedMessage.trim() || null,
     redirectUrl: input.redirectUrl.trim() || null,
@@ -150,6 +153,7 @@ export function toLockInput(lock: LockWithKeys): LockInput {
     hideNavLinks: lock.hideNavLinks,
     protect: lock.protect as ProtectMode,
     seoHidden: lock.seoHidden,
+    liquidCode: lock.liquidCode ?? "",
     deniedAction: lock.deniedAction as DeniedAction,
     deniedMessage: lock.deniedMessage ?? "",
     redirectUrl: lock.redirectUrl ?? "",

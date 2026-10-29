@@ -8,13 +8,13 @@ name = "LockRules"
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
 # write_products / write_content: resource pickers, lock targets, seo.hidden
-# read_themes: detect whether the app embed is enabled
+# write_themes: detect the app embed; secure mode theme edits (also needs Shopify's exemption)
 # read_locales: list published languages for message translations
 # read_validations / write_validations: install the checkout protection function
 # write_app_proxy: /apps/lockrules for passcodes, secret links and IP checks
 # read_orders / read_customers / write_customers: purchase history keys and registration approval
 # read/write_payment_customizations: payment rules function
-scopes = "write_products,write_content,read_themes,read_locales,read_validations,write_validations,write_app_proxy,read_orders,read_customers,write_customers,read_payment_customizations,write_payment_customizations"
+scopes = "write_products,write_content,write_themes,read_locales,read_validations,write_validations,write_app_proxy,read_orders,read_customers,write_customers,read_payment_customizations,write_payment_customizations"
 
 [webhooks]
 api_version = "2027-01"
@@ -36,6 +36,10 @@ api_version = "2027-01"
   # [[webhooks.subscriptions]]
   # uri = "/webhooks/customers/create"
   # topics = [ "customers/create" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/themes/publish"
+  topics = [ "themes/publish" ]
 
   [[webhooks.subscriptions]]
   uri = "/webhooks/compliance"

@@ -281,6 +281,17 @@ function ConditionRow({
           </s-stack>
         )}
 
+        {meta?.input === "liquid" && (
+          <s-text-area
+            label="Liquid"
+            rows={4}
+            value={condition.liquid ?? ""}
+            placeholder="{% if customer.accepts_marketing %}true{% endif %}"
+            details="Output true when the condition passes. Runs only in secure mode."
+            onInput={(e) => onChange({ ...condition, liquid: e.currentTarget.value })}
+          />
+        )}
+
         {meta?.lists && (
           <s-select
             label={meta.lists === "email" ? "Also use email list" : "Also use passcode list"}
@@ -502,6 +513,22 @@ export default function LockEditor() {
             </s-stack>
           )}
 
+          {lock.resourceType === "liquid" && (
+            <s-stack gap="small-200">
+              <s-text-area
+                label="Lock pages where this Liquid outputs true"
+                rows={5}
+                value={lock.liquidCode}
+                placeholder="{% if template.suffix == 'members' %}true{% endif %}"
+                onInput={(e) => set("liquidCode", e.currentTarget.value)}
+              />
+              <s-paragraph color="subdued">
+                For anything the other lock types don&apos;t cover, such as alternate templates or
+                product types. Liquid locks only work with secure mode on.
+              </s-paragraph>
+            </s-stack>
+          )}
+
           {named && (
             <s-text-area
               label={lock.resourceType === "vendor" ? "Vendors" : "Product tags"}
@@ -532,7 +559,7 @@ export default function LockEditor() {
               ))}
             </s-choice-list>
           )}
-          {!usesPicker && !named && lock.resourceType !== "store" && contentOptions.length === 0 && (
+          {!usesPicker && !named && !["store", "liquid"].includes(lock.resourceType) && contentOptions.length === 0 && (
             <s-paragraph color="subdued">Nothing to choose yet. Create some first.</s-paragraph>
           )}
 
@@ -687,7 +714,7 @@ export default function LockEditor() {
         </s-section>
       )}
 
-      {!["store", "variant", "vendor", "product_tag"].includes(lock.resourceType) && (
+      {!["store", "variant", "vendor", "product_tag", "liquid"].includes(lock.resourceType) && (
         <s-section slot="aside" heading="Visibility">
           <s-stack gap="small-200">
             <s-checkbox

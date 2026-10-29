@@ -14,6 +14,7 @@ import { newSecret } from "./tokens.server";
 import { localToEpoch } from "./time";
 import { syncSeo } from "./seo.server";
 import { syncPaymentRules } from "./payments.server";
+import { refreshSnippets, writeShopConfig } from "./secure/install.server";
 
 /*
  * The compiler turns the locks stored in our database into two JSON documents:
@@ -127,6 +128,11 @@ function compileKeys(
       const params = readParams(c.params);
       const compiled: CompiledCondition = { t: type, v: [], inv: c.inverted };
       const hhmm = (t?: string) => (target === "checkout" ? `${t}:00` : (t ?? "").replace(":", ""));
+
+      if (type === "liquid") {
+        compiled.id = params.uid;
+        return compiled;
+      }
 
       if (REMOTE_CONDITIONS.includes(type)) {
         compiled.id = params.uid;
@@ -438,10 +444,16 @@ export async function syncShop(graphql: GraphQL, domain: string) {
     problems.push(e instanceof Error ? e.message : String(e));
   }
 
-  for (const step of [
+  const steps = [
     () => syncSeo(graphql, shop, locks),
     () => syncPaymentRules(graphql, shop, settings.paymentRules),
-  ]) {
+  ];
+  if (shop.secureEnabled && !tooLarge) {
+    // Theme code reads the config from a shop metafield, and custom Liquid lives in a snippet.
+    steps.push(() => writeShopConfig(graphql, storefront, secret));
+    if (shop.secureThemeId) steps.push(() => refreshSnippets(graphql, shop.secureThemeId!, locks));
+  }
+  for (const step of steps) {
     try {
       await step();
     } catch (e) {

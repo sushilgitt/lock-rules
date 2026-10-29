@@ -3,8 +3,15 @@
   A lock opens when any key passes; a key passes when all its conditions do.
   Condition codes and value formats come from app/lib/compile.server.ts.
 
+  Also copied into the merchant's theme by secure mode (app/lib/secure).
+
   @param {object} lock - A compiled lock from app.metafields.lockrules.config
   @param {string} unlocked - Output of lr_unlocked
+  @param {product} [product] - Current product, for custom Liquid conditions
+  @param {collection} [collection] - Current collection, for custom Liquid conditions
+  @param {page} [page] - Current page, for custom Liquid conditions
+  @param {blog} [blog] - Current blog, for custom Liquid conditions
+  @param {article} [article] - Current article, for custom Liquid conditions
 
   @example
   {% capture open %}{% render 'lr_open', lock: lock, unlocked: unlocked %}{% endcapture %}
@@ -129,6 +136,14 @@
         when 'passcode', 'secret_link', 'confirm', 'ip'
           assign needle = '|' | append: c.id | append: '|'
           if unlocked contains needle
+            assign pass = true
+          endif
+        when 'liquid'
+          capture custom
+            render 'lr_custom', kind: 'cond', id: c.id, product: product, collection: collection, page: page, blog: blog, article: article
+          endcapture
+          assign custom = custom | strip
+          if custom == 'true'
             assign pass = true
           endif
       endcase

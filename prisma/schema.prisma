@@ -49,6 +49,13 @@ model Shop {
   paymentCustomizationId String?
   // Resource gids we set seo.hidden on, so we only ever remove our own
   seoHiddenIds   Json      @default("[]")
+  // Secure mode: LockRules code written into the published theme (needs the theme-write exemption)
+  secureEnabled  Boolean   @default(false)
+  secureThemeId  String?
+  // Theme files the merchant excluded from injection, e.g. ["sections/main-collection.liquid"]
+  secureExcluded Json      @default("[]")
+  // Last install result: { at, themeName, edited: [...], warnings: [...], error? }
+  secureReport   Json      @default("{}")
   locks          Lock[]
   inputLists     InputList[]
   keyUsages      KeyUsage[]
@@ -59,8 +66,10 @@ model Lock {
   shopId          String
   shop            Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
   name            String
-  // product | collection | page | blog | article | store | vendor | product_tag | variant
+  // product | collection | page | blog | article | store | vendor | product_tag | variant | liquid
   resourceType    String
+  // liquid locks: Liquid that outputs "true" on pages the lock covers (secure mode only)
+  liquidCode      String?
   // [{ id: "gid://shopify/Product/1", handle: "x", title: "X" }]
   resources       Json     @default("[]")
   enabled         Boolean  @default(true)

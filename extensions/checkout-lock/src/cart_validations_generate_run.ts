@@ -117,6 +117,7 @@ function conditionPasses(c: Condition, buyer: Buyer): boolean {
     }
     case "domain":
     case "market":
+    case "liquid":
       // Not available to checkout functions; the storefront enforces these.
       return true;
     default:

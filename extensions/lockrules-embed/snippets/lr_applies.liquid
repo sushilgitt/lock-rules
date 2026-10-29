@@ -1,0 +1,114 @@
+{%- doc -%}
+  Outputs "1" when `lock` covers the page being rendered. Store locks honour
+  their exceptions; account, sign-in and password pages are always open.
+  Variant locks "apply" on a product page with a locked variant (the embed then
+  hides the variant instead of the page).
+
+  Also copied into the merchant's theme by secure mode (app/lib/secure), so
+  template objects are passed in rather than read as globals.
+
+  @param {object} lock - A compiled lock
+  @param {product} [product] - Current product, if any
+  @param {collection} [collection] - Current collection, if any
+  @param {page} [page] - Current page, if any
+  @param {blog} [blog] - Current blog, if any
+  @param {article} [article] - Current article, if any
+
+  @example
+  {% capture applies %}{% render 'lr_applies', lock: lock, product: product, collection: collection, page: page, blog: blog, article: article %}{% endcapture %}
+{%- enddoc -%}
+{%- liquid
+  assign tpl = template.name
+  assign rid = ''
+  case tpl
+    when 'product'
+      assign rid = product.id | append: ''
+    when 'collection'
+      assign rid = collection.id | append: ''
+    when 'page'
+      assign rid = page.id | append: ''
+    when 'blog'
+      assign rid = blog.id | append: ''
+    when 'article'
+      assign rid = article.id | append: ''
+  endcase
+
+  assign applies = false
+  case lock.type
+    when 'store'
+      assign applies = true
+      if template.directory == 'customers' or tpl == 'password'
+        assign applies = false
+      elsif tpl == 'index' and lock.ex contains 'home'
+        assign applies = false
+      elsif tpl == 'page' and lock.ex contains 'pages'
+        assign applies = false
+      elsif tpl == 'search' and lock.ex contains 'search'
+        assign applies = false
+      elsif request.path contains '/policies/' and lock.ex contains 'policies'
+        assign applies = false
+      endif
+    when 'product'
+      if tpl == 'product' and lock.ids contains rid
+        assign applies = true
+      endif
+    when 'vendor'
+      if tpl == 'product'
+        assign vendor = product.vendor | downcase
+        if lock.ids contains vendor
+          assign applies = true
+        endif
+      endif
+    when 'collection', 'product_tag'
+      if tpl == 'collection' and lock.type == 'collection' and lock.ids contains rid
+        assign applies = true
+      elsif tpl == 'product'
+        if lock.type == 'product_tag'
+          assign haystack = product.tags | join: '|' | downcase | prepend: '|' | append: '|'
+        else
+          assign haystack = product.collections | map: 'id' | join: '|' | prepend: '|' | append: '|'
+        endif
+        for lid in lock.ids
+          assign needle = '|' | append: lid | append: '|'
+          if haystack contains needle
+            assign applies = true
+            break
+          endif
+        endfor
+      endif
+    when 'variant'
+      if tpl == 'product'
+        for v in product.variants
+          assign vid = v.id | append: ''
+          if lock.ids contains vid
+            assign applies = true
+            break
+          endif
+        endfor
+      endif
+    when 'page', 'article'
+      if tpl == lock.type and lock.ids contains rid
+        assign applies = true
+      endif
+    when 'blog'
+      if tpl == 'blog' and lock.ids contains rid
+        assign applies = true
+      elsif tpl == 'article'
+        assign blog_id = blog.id | append: ''
+        if lock.ids contains blog_id
+          assign applies = true
+        endif
+      endif
+    when 'liquid'
+      capture custom
+        render 'lr_custom', kind: 'lock', id: lock.id, product: product, collection: collection, page: page, blog: blog, article: article
+      endcapture
+      assign custom = custom | strip
+      if custom == 'true'
+        assign applies = true
+      endif
+  endcase
+  if applies
+    echo '1'
+  endif
+-%}
