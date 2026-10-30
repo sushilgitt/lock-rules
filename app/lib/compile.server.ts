@@ -16,6 +16,7 @@ import { syncSeo } from "./seo.server";
 import { syncPaymentRules } from "./payments.server";
 import { refreshSnippets, writeShopConfig } from "./secure/install.server";
 import { currentPlan } from "./billing.server";
+import { midstates, type Midstates } from "../../extensions/checkout-lock/src/hmac";
 
 /*
  * The compiler turns the locks stored in our database into two JSON documents:
@@ -112,7 +113,8 @@ export interface CheckoutLock {
 export interface CheckoutConfig {
   locks: CheckoutLock[];
   message: string;
-  secret: string;
+  // Keyed HMAC state, so the function hashes less per token (see extensions/checkout-lock/src/hmac.ts).
+  mid: Midstates;
 }
 
 export type ListEntries = Map<string, { v: string; r?: string }[]>;
@@ -296,7 +298,11 @@ export function compile(
     );
   }
 
-  const checkout: CheckoutConfig = { locks: checkoutLocks, message: settings.messages.checkout, secret };
+  const checkout: CheckoutConfig = {
+    locks: checkoutLocks,
+    message: settings.messages.checkout,
+    mid: midstates(secret),
+  };
   if (Buffer.byteLength(JSON.stringify(checkout)) > MAX_CHECKOUT_BYTES) {
     // Email lists are the usual culprit: enforce them on the storefront only.
     for (const lock of checkout.locks) {
@@ -396,7 +402,9 @@ async function syncValidation(
         functionHandle: FUNCTION_HANDLE,
         title: "LockRules checkout protection",
         enable: true,
-        blockOnFailure: false,
+        // Fail closed: if the function ever crashes (e.g. a huge cart exceeds the
+        // instruction limit), block the checkout rather than let locked items through.
+        blockOnFailure: true,
         metafields: metafields().map((m) => ({ type: "json", ...m })),
       },
     },

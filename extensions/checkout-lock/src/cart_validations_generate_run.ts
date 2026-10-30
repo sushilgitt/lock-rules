@@ -3,7 +3,7 @@ import type {
   CartValidationsGenerateRunResult,
   ValidationError,
 } from "../generated/api";
-import { hmacSha256Hex } from "./hmac";
+import { hmacHex, type Midstates } from "./hmac";
 
 // Mirrors CheckoutConfig in app/lib/compile.server.ts.
 type Condition = {
@@ -19,7 +19,7 @@ type Condition = {
 type Key = { c: Condition[] };
 type LockType = "product" | "collection" | "store" | "variant" | "vendor" | "product_tag";
 type Lock = { id: string; type: LockType; ids: string[]; keys: Key[] };
-type Config = { locks: Lock[]; message: string; secret?: string };
+type Config = { locks: Lock[]; message: string; mid?: Midstates };
 
 type Buyer = {
   signedIn: boolean;
@@ -29,8 +29,8 @@ type Buyer = {
   orders: number;
   purchased: Set<string>;
   country: string;
-  // Condition uids unlocked by a valid, unexpired token in the `_lr` cart attribute.
-  unlocked: Set<string>;
+  // Is this condition uid unlocked by a valid, unexpired token in the `_lr` cart attribute?
+  unlocked: (uid: string) => boolean;
   cartProducts: Set<string>;
   cartVariants: Set<string>;
   subtotal: number; // store currency
@@ -41,22 +41,38 @@ type Buyer = {
 
 const legacy = (gid: string) => gid.split("/").pop() ?? gid;
 
+// The storefront keeps at most 20 tokens; anything beyond that is someone stuffing the attribute.
+const MAX_TOKEN_CHARS = 2400;
+
 /**
- * Tokens are "<uid>.<exp>.<hmac>" (see app/lib/tokens.server.ts). Functions
- * can't read the clock, so expiry is checked against the shop's local date:
- * a token stays valid until the end of the day it expires.
+ * Tokens are "<uid>.<exp>.<hmac>" (see app/lib/tokens.server.ts). Verifying one
+ * costs ~2M instructions, and the attribute is shopper-controlled, so input is
+ * capped, each uid keeps only its newest token, and nothing is hashed until a
+ * lock actually needs that uid. Functions can't read the clock, so expiry is
+ * checked against the shop's local date: a token lasts to the end of its day.
  */
-export function unlockedConditions(raw: string | null | undefined, secret: string, today: string) {
-  const unlocked = new Set<string>();
-  if (!raw || !secret) return unlocked;
-  for (const token of raw.split(" ")) {
-    const [uid, exp, sig] = token.split(".");
-    if (!uid || !exp || !sig) continue;
-    const expDate = new Date(Number(exp) * 1000).toISOString().slice(0, 10);
-    if (expDate < today) continue;
-    if (hmacSha256Hex(secret, `${uid}.${exp}`) === sig) unlocked.add(uid);
+export function tokenChecker(raw: string | null | undefined, mid: Midstates | undefined, today: string) {
+  const byUid = new Map<string, [string, string]>();
+  if (raw && mid) {
+    const tokens = (raw.length > MAX_TOKEN_CHARS ? raw.slice(-MAX_TOKEN_CHARS) : raw).split(" ");
+    for (const token of tokens) {
+      const [uid, exp, sig] = token.split(".");
+      if (uid && exp && sig) byUid.set(uid, [exp, sig]);
+    }
   }
-  return unlocked;
+  const verdicts = new Map<string, boolean>();
+  return (uid: string) => {
+    let verdict = verdicts.get(uid);
+    if (verdict === undefined) {
+      const entry = byUid.get(uid);
+      verdict = false;
+      if (entry && new Date(Number(entry[0]) * 1000).toISOString().slice(0, 10) >= today) {
+        verdict = hmacHex(mid!, `${uid}.${entry[0]}`) === entry[1];
+      }
+      verdicts.set(uid, verdict);
+    }
+    return verdict;
+  };
 }
 
 function conditionPasses(c: Condition, buyer: Buyer): boolean {
@@ -107,7 +123,7 @@ function conditionPasses(c: Condition, buyer: Buyer): boolean {
     case "ip":
     case "newsletter":
     case "klaviyo_member":
-      pass = Boolean(c.id && buyer.unlocked.has(c.id));
+      pass = Boolean(c.id && buyer.unlocked(c.id));
       break;
     case "date_after":
     case "date_before":
@@ -161,7 +177,7 @@ export function cartValidationsGenerateRun(
       orders: customer?.numberOfOrders ?? 0,
       purchased: new Set(Array.isArray(purchased) ? purchased.map(String) : []),
       country: String(input.localization.country.isoCode).toLowerCase(),
-      unlocked: unlockedConditions(input.cart.tokens?.value, config.secret ?? "", time.date),
+      unlocked: tokenChecker(input.cart.tokens?.value, config.mid, time.date),
       cartProducts: new Set(variants.map((v) => legacy(v.product.id))),
       cartVariants: new Set(variants.map((v) => legacy(v.id))),
       subtotal: Number(input.cart.cost.subtotalAmount.amount) / rate,
@@ -181,14 +197,6 @@ export function cartValidationsGenerateRun(
       const product = variant.product;
       if (reported.has(variant.id)) continue;
 
-      const memberOf = new Set(
-        product.inCollections.filter((m) => m.isMember).map((m) => m.collectionId),
-      );
-      const productTags = new Set(
-        product.productTags.filter((t) => t.hasTag).map((t) => t.tag.toLowerCase()),
-      );
-      const vendor = (product.vendor ?? "").toLowerCase();
-
       const denied = config.locks.some((lock) => {
         let applies = false;
         switch (lock.type) {
@@ -202,13 +210,13 @@ export function cartValidationsGenerateRun(
             applies = lock.ids.includes(variant.id);
             break;
           case "collection":
-            applies = lock.ids.some((id) => memberOf.has(id));
+            applies = product.inCollections.some((m) => m.isMember && lock.ids.includes(m.collectionId));
             break;
           case "vendor":
-            applies = lock.ids.includes(vendor);
+            applies = lock.ids.includes((product.vendor ?? "").toLowerCase());
             break;
           case "product_tag":
-            applies = lock.ids.some((t) => productTags.has(t));
+            applies = product.productTags.some((t) => t.hasTag && lock.ids.includes(t.tag.toLowerCase()));
             break;
         }
         return applies && !isOpen(lock);

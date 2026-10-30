@@ -488,7 +488,9 @@ export default function LockEditor() {
   const saving = fetcher.state !== "idle";
   const errors = fetcher.data && !fetcher.data.ok ? fetcher.data.errors : [];
 
-  useEffect(() => setLock(initial), [initial]);
+  // Only load fresh data when moving to another lock. Every action revalidates the
+  // loader, so depending on `initial` would wipe the form after a failed save.
+  useEffect(() => setLock(initial), [lockId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const data = fetcher.data;
